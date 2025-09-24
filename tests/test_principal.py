@@ -1,4 +1,4 @@
-from ic.principal import Principal
+from src.icp_principal.principal import Principal
 
 class TestPrincipal:
 

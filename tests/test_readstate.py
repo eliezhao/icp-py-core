@@ -1,7 +1,6 @@
-from ic.agent import *
-from ic.identity import *
-from ic.client import *
-from ic.system_state import *
+from src.icp_identity.identity import *
+from src.icp_agent.client import *
+from src.icp_agent.system_state import *
 
 client = Client()
 iden = Identity(privkey="833fe62409237b9d62ec77587520911e9a759cec1d19755b7da901b96dca3d42")

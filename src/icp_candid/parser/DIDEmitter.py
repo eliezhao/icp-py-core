@@ -1,5 +1,4 @@
-from ic.candid import Types
-from .DIDLexer import DIDLexer
+from src.icp_candid.candid import Types
 from .DIDParser import DIDParser
 from .DIDParserListener import DIDParserListener
 

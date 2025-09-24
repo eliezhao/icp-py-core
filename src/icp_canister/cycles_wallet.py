@@ -1,4 +1,4 @@
-from ic.canister import Canister
+from src.icp_canister.canister import Canister
 
 wallet_did = """
 type EventKind = variant {

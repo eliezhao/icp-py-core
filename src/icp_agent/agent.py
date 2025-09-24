@@ -2,12 +2,9 @@ import time
 import asyncio
 import cbor2
 import httpx
-from .candid import decode
-from .certificate import Certificate
-from .identity import *
-from .constants import *
-from .utils import to_request_id
-from .principal import Principal
+from src import *
+from src import to_request_id
+from src.icp_principal.principal import Principal
 
 DEFAULT_POLL_TIMEOUT_SECS = 60.0
 

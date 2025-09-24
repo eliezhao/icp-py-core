@@ -1,7 +1,4 @@
-from ic.agent import *
-from ic.identity import *
-from ic.client import *
-from ic.candid import Types, encode
+from src.icp_agent.client import *
 
 client = Client()
 canister_id = "gvbup-jyaaa-aaaah-qcdwa-cai"

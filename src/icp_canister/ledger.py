@@ -1,4 +1,4 @@
-from ic.canister import Canister
+from src.icp_canister.canister import Canister
 
 ledger_did = """
 // This is the official Ledger interface that is guaranteed to be backward compatible.

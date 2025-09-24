@@ -2,7 +2,7 @@ import hashlib
 import json
 
 from ecdsa.curves import Ed25519, SECP256k1
-from .principal import Principal
+from src.icp_principal.principal import Principal
 import ecdsa
 from mnemonic import Mnemonic
 

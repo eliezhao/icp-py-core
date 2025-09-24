@@ -1,6 +1,6 @@
-from .agent import Agent
-from .certificate import Certificate
-from .principal import Principal
+from src.icp_agent.agent import Agent
+from src.icp_certificate.certificate import Certificate
+from src.icp_principal.principal import Principal
 import leb128
 import cbor2
 

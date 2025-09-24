@@ -1,4 +1,4 @@
-from ic.canister import Canister
+from src.icp_canister.canister import Canister
 
 governance_did = """
 type AccountIdentifier = record { hash : vec nat8 };

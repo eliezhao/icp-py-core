@@ -1,9 +1,8 @@
 import asyncio
-from ic.canister import Canister
-from ic.client import Client
-from ic.identity import Identity
-from ic.agent import Agent
-from ic.candid import Types
+from src.icp_canister.canister import Canister
+from src.icp_agent.client import Client
+from src.icp_identity.identity import Identity
+from src.icp_agent.agent import Agent
 
 iden = Identity()
 client = Client()

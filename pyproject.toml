@@ -1,6 +1,36 @@
 [build-system]
-requires = [
-  "setuptools",
-  "wheel",
-]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "icp-py-core"
+version = "1.0.0"
+description = "Core Python SDK for the Internet Computer: agent, candid, identity, principal, certificate."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "eliezhao" }]
+requires-python = ">=3.8"
+
+dependencies = [
+  "httpx>=0.24",
+  "cbor2>=5.6.0",
+  "leb128>=1.0.4",
+]
+
+[project.optional-dependencies]
+bls = ["blst"]  # optional: only needed if you enable certificate verification
+
+[project.urls]
+Homepage = "https://github.com/eliezhao/icp-py-core"
+Repository = "https://github.com/eliezhao/icp-py-core"
+Issues = "https://github.com/eliezhao/icp-py-core/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["icp", "icp_*"]
+
+[tool.setuptools]
+include-package-data = true

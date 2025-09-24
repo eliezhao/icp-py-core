@@ -1,4 +1,4 @@
-from ic.candid import *
+from src.icp_candid.candid import *
 
 # TODO
 class TestCandid:

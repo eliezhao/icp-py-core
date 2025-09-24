@@ -1,31 +1,44 @@
-from ic.agent import *
-from ic.identity import *
-from ic.client import *
-from ic.candid import Types, encode
+import pytest
 
-class TestAgent:
+from src.icp_agent.agent import *
+from src.icp_identity.identity import *
+from src.icp_agent.client import *
+from src.icp_candid.candid import encode
 
-    def setup_class(self):
-        client = Client()
+CANISTER_ID_TEXT = "wcrzb-2qaaa-aaaap-qhpgq-cai"
+
+@pytest.fixture(scope="session")
+def ag() -> "Agent":
+        client = Client(url="https://ic0.app")
         iden = Identity(privkey="833fe62409237b9d62ec77587520911e9a759cec1d19755b7da901b96dca3d42")
-        self.agent = Agent(iden, client)
+        ag = Agent(iden, client)
+        return ag
 
-    def test_query(self):
-        # query token totalSupply
-        ret = self.agent.query_raw("gvbup-jyaaa-aaaah-qcdwa-cai", "totalSupply", encode([]))
-        assert ret[0]['value'] == 10000000000000000
 
-        # query token name
-        ret = self.agent.query_raw("gvbup-jyaaa-aaaah-qcdwa-cai", "name", encode([]))
-        assert ret[0]['value'] == 'XTC Test'
+def test_update_raw_sync(ag):
+    arg = encode([])
 
-    def test_update(self):
-        ret = self.agent.update_raw(
-            "gvbup-jyaaa-aaaah-qcdwa-cai",
-            "transfer",
-            encode([
-                {'type': Types.Principal, 'value': 'aaaaa-aa'},
-                {'type': Types.Nat, 'value': 10000000000}
-                ])
+    t0 = time.perf_counter()
+    ret = ag.update_raw(CANISTER_ID_TEXT, "set", arg, verify_certificate=True)
+    t1 = time.perf_counter()
+
+    latency_ms = (t1 - t0) * 1000
+    print(f"update_raw latency: {latency_ms:.2f} ms")
+    print("update result:", ret)
+
+    assert ret is not None
+
+
+def test_query_raw_sync(ag):
+    t0 = time.perf_counter()
+    ret = ag.query_raw(
+            CANISTER_ID_TEXT,
+            "get",
+            encode([])
             )
-        assert ret != None
+    t1 = time.perf_counter()
+    latency_ms = (t1 - t0) * 1000
+    print(f"query_raw latency: {latency_ms:.2f} ms")
+    print('query result: ', ret)
+
+    assert ret is not None

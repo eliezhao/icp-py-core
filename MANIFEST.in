@@ -1,0 +1,10 @@
+# MANIFEST.in
+
+include README.md
+include LICENSE
+include CHANGELOG.md
+include ROADMAP.md
+
+exclude pics/*
+exclude tests
+recursive-exclude src/icp_candid/parser *.jar *.sh

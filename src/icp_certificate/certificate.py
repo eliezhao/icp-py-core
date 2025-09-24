@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import cbor2
 import leb128
 
-from ic.principal import Principal
+from src.icp_principal.principal import Principal
 
 
 class NodeId(Enum):

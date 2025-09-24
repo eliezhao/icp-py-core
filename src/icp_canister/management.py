@@ -3,7 +3,7 @@
 # wrap basic interfaces provided by the management canister:
 # create_canister, install_code, canister_status, etc.
 
-from ic.canister import Canister
+from src.icp_canister.canister import Canister
 
 
 management_did = """

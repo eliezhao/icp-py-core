@@ -1,4 +1,4 @@
-from ic.identity import *
+from src.icp_identity.identity import *
 
 class TestIdentity:
 

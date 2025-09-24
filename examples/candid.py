@@ -5,7 +5,7 @@
 
 '''
 
-from ic.candid import Types, encode, decode
+from src.icp_candid.candid import Types, encode, decode
 
 
 '''
