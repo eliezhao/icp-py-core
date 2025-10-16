@@ -1,9 +1,9 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=71", "wheel", "build"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "icp-py-core"
+name = "icp-py-core"  # PyPI 包名保留不变；导入名是 icp_core（由目录决定）
 version = "1.0.0"
 description = "Core Python SDK for the Internet Computer: agent, candid, identity, principal, certificate."
 readme = "README.md"
@@ -27,10 +27,17 @@ Issues = "https://github.com/eliezhao/icp-py-core/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["icp", "icp_*"]
+include = ["icp_core*", "icp_*"]
+exclude = ["tests*", "examples*"]
 
-[tool.setuptools]
-include-package-data = true
+# wheel 中包含非 .py 资产
+[tool.setuptools.package-data]
+icp_candid = [
+  "parser/assets/*.g4",
+  "parser/assets/*.jar",
+  "parser/assets/*.sh",
+]

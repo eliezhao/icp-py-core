@@ -1,21 +1,15 @@
-# Include top-level docs
 include README.md
 include CHANGELOG.md
 include ROADMAP.md
 include LICENSE
 
-# Package data: ship ANTLR grammars, jar, and helper script
 recursive-include src/icp_candid/parser/assets *.g4 *.jar *.sh
 
-# (Optional) if you have other package data later, add more recursive-include lines
-
-# Do NOT include tests, examples, or pics in the source distribution
 prune tests
 prune examples
 prune pics
 prune __pycache__
 
-# Global excludes
 global-exclude __pycache__/*
 global-exclude *.py[cod]
 global-exclude .DS_Store

@@ -1,25 +1,51 @@
+# src/icp_core/__init__.py
 """
-icp_core: Convenience re-exports for the most-used classes.
+Unified facade for icp-py-core.
+
+Developers can import common APIs from this single entrypoint, e.g.:
+    from icp_core import (
+        Agent, Client,
+        Canister, Ledger, Governance, Management, CyclesWallet,
+        Identity, DelegateIdentity,
+        Principal, Certificate,
+        encode, decode, Types,
+    )
 """
+
+# --- agent & client & system state ---
 from icp_agent.agent import Agent
 from icp_agent.client import Client
-from icp_agent.canister import Canister
 
-from icp_principal import Principal
-from icp_identity import Identity
-from icp_candid import encode, decode, Types
+# --- canister family ---
+from icp_canister.canister import Canister
+from icp_canister.ledger import Ledger
+from icp_canister.governance import Governance
+from icp_canister.management import Management
+from icp_canister.cycles_wallet import CyclesWallet
 
-from icp_certificate import Certificate, BlstUnavailable
+# --- identity ---
+from icp_identity.identity import Identity, DelegateIdentity
+
+# --- candid ---
+from icp_candid.candid import encode, decode, Types
+
+# --- principal ---
+from icp_principal.principal import Principal
+
+# --- certificate ---
+from icp_certificate.certificate import Certificate
 
 __all__ = [
-    "Agent",
-    "Client",
-    "Canister",
+    # agent / client / state
+    "Agent", "Client", "SystemState",
+    # canister side
+    "Canister", "Ledger", "Governance", "Management", "CyclesWallet",
+    # identity
+    "Identity", "DelegateIdentity",
+    # candid
+    "encode", "decode", "Types",
+    # principal
     "Principal",
-    "Identity",
-    "encode",
-    "decode",
-    "Types",
+    # certificate
     "Certificate",
-    "BlstUnavailable",
 ]
