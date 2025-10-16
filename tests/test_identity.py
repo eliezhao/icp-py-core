@@ -24,5 +24,5 @@ class TestIdentity:
         mnemonic = 'fence dragon soft spoon embrace bronze regular hawk more remind detect slam'
         iden = Identity.from_seed(mnemonic)
         assert iden.key_type == 'ed25519'
-        # Verified with Rust slip10/bip39 reference output
-        assert iden.privkey == 'd0de9643a6869d6690590434e15248cf43694966ff0d95a28f7587e9a0afca40'
+        # Correct SLIP-0010 (all-hardened) output for the path above:
+        assert iden.privkey == '8cb300e3b7d3d5181bda96437a6a5e6d8cdfc0eba02497e7bb6a3e320f5736c9'
