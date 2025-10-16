@@ -2,9 +2,11 @@ import hashlib
 import json
 
 from ecdsa.curves import Ed25519, SECP256k1
-from src.icp_principal.principal import Principal
 import ecdsa
 from mnemonic import Mnemonic
+
+from icp_principal import Principal
+
 
 class Identity:
     def __init__(self, privkey = "", type = "ed25519", anonymous = False):

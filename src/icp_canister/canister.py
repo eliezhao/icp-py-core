@@ -1,6 +1,10 @@
 from antlr4 import *
 from antlr4.InputStream import InputStream
-from src.icp_candid.candid import encode, FuncClass
+
+from icp_candid.candid import FuncClass, encode
+from icp_candid.parser.DIDEmitter import DIDEmitter
+from icp_candid.parser.DIDLexer import DIDLexer
+from icp_candid.parser.DIDParser import DIDParser
 
 class Canister:
     def __init__(self, agent, canister_id, candid=None):

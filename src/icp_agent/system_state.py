@@ -1,8 +1,10 @@
-from src.icp_agent.agent import Agent
-from src.icp_certificate.certificate import Certificate
-from src.icp_principal.principal import Principal
 import leb128
 import cbor2
+
+from icp_agent import Agent
+from icp_certificate import Certificate
+from icp_principal import Principal
+
 
 def time(agent: Agent, canister_id: str) -> int:
     raw_cert = agent.read_state_raw(canister_id, [["time".encode()]])

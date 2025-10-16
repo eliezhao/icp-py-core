@@ -36,16 +36,10 @@ from icp_principal.principal import Principal
 from icp_certificate.certificate import Certificate
 
 __all__ = [
-    # agent / client / state
-    "Agent", "Client", "SystemState",
-    # canister side
+    "Agent", "Client",
     "Canister", "Ledger", "Governance", "Management", "CyclesWallet",
-    # identity
     "Identity", "DelegateIdentity",
-    # candid
     "encode", "decode", "Types",
-    # principal
     "Principal",
-    # certificate
     "Certificate",
 ]

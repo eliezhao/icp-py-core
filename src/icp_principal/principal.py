@@ -1,5 +1,5 @@
 
-# principal type: https://github.com/dfinity/ic-types/blob/main/src/principal.rs
+# principal type: https://internetcomputer.org/docs/references/ic-interface-spec/#principal
 
 import zlib
 import math

@@ -2,9 +2,14 @@ import time
 import asyncio
 import cbor2
 import httpx
-from src import *
-from src import to_request_id
-from src.icp_principal.principal import Principal
+
+from icp_candid import decode
+from icp_certificate.certificate import IC_ROOT_KEY, Certificate
+from icp_identity import DelegateIdentity
+from icp_principal import Principal
+from icp_utils import to_request_id
+
+IC_REQUEST_DOMAIN_SEPARATOR = b"\x0Aic-request"
 
 DEFAULT_POLL_TIMEOUT_SECS = 60.0
 
