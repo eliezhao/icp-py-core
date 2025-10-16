@@ -3,8 +3,6 @@
 # wrap basic interfaces provided by the management canister:
 # create_canister, install_code, canister_status, etc.
 
-from src.icp_canister.canister import Canister
-
 
 management_did = """
 type canister_id = principal;
@@ -62,6 +60,6 @@ service ic : {
 }
 """
 
-class Management(Canister):
+class Management():
     def __init__(self, agent):
         super().__init__(agent, "aaaaa-aa", management_did)

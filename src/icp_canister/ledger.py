@@ -1,4 +1,4 @@
-from src.icp_canister.canister import Canister
+
 
 ledger_did = """
 // This is the official Ledger interface that is guaranteed to be backward compatible.
@@ -252,6 +252,6 @@ service : {
 }
 """
 
-class Ledger(Canister):
+class Ledger():
     def __init__(self, agent):
         super().__init__(agent, "ryjl3-tyaaa-aaaaa-aaaba-cai", ledger_did)

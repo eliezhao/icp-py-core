@@ -1,4 +1,3 @@
-from src.icp_canister.canister import Canister
 
 wallet_did = """
 type EventKind = variant {
@@ -285,6 +284,6 @@ service : {
 }
 """
 
-class CyclesWallet(Canister):
+class CyclesWallet:
     def __init__(self, agent, wallet_id):
         super().__init__(agent, wallet_id, wallet_did)

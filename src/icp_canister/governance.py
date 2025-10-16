@@ -1,4 +1,3 @@
-from src.icp_canister.canister import Canister
 
 governance_did = """
 type AccountIdentifier = record { hash : vec nat8 };
@@ -351,6 +350,6 @@ service : (Governance) -> {
 }
 """
 
-class Governance(Canister):
+class Governance():
     def __init__(self, agent):
         super().__init__(agent, "rrkah-fqaaa-aaaaa-aaaaq-cai", governance_did)

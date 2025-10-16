@@ -1,13 +1,14 @@
+import hashlib
 import time
 import asyncio
 import cbor2
 import httpx
+import leb128
 
 from icp_candid import decode
 from icp_certificate.certificate import IC_ROOT_KEY, Certificate
 from icp_identity import DelegateIdentity
 from icp_principal import Principal
-from icp_utils import to_request_id
 
 IC_REQUEST_DOMAIN_SEPARATOR = b"\x0Aic-request"
 
@@ -40,6 +41,40 @@ def sign_request(req, iden):
             "sender_delegation": identity_obj.delegations,
         })
     return request_id, cbor2.dumps(envelope)
+
+def to_request_id(d):
+    if not isinstance(d, dict):
+        print(d)
+        pass
+    vec = []
+    for k, v in d.items():
+        if isinstance(v, list):
+            v = encode_list(v)
+        if isinstance(v, int):
+            v = bytes(leb128.u.encode(v))
+        if not isinstance(k, bytes):
+            k = k.encode()
+        if not isinstance(v, bytes):
+            v = v.encode()
+        h_k = hashlib.sha256(k).digest()
+        h_v = hashlib.sha256(v).digest()
+        vec.append(h_k + h_v)
+    s = b''.join(sorted(vec))
+    return hashlib.sha256(s).digest()
+
+def encode_list(l):
+    ret = b''
+    for item in l:
+        v = item
+        if isinstance(item, list):
+            v = encode_list(item)
+        if isinstance(item, int):
+            v = bytes(leb128.u.encode(v))
+        if isinstance(item, str):
+            v = item.encode()
+        ret += hashlib.sha256(v).digest()
+    return ret
+
 
 # Default ingress expiry in seconds
 DEFAULT_INGRESS_EXPIRY_SEC = 3 * 60

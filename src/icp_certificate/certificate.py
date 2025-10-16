@@ -1,5 +1,7 @@
 # reference: https://smartcontracts.org/docs/interface-spec/index.html#certification
 
+from __future__ import annotations
+
 import hashlib
 import time
 from enum import Enum
@@ -8,7 +10,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import cbor2
 import leb128
 
-from src.icp_principal.principal import Principal
+from icp_principal import Principal
 
 
 class NodeId(Enum):
@@ -20,14 +22,14 @@ class NodeId(Enum):
 
 
 def domain_sep(s: str) -> bytes:
-    """Return a one-byte length prefix + ASCII bytes of the domain string."""
+    """Return a one-byte length prefix + UTF-8 bytes of the domain string."""
     b = s.encode("utf-8")
     if len(b) > 255:
         raise ValueError("domain separator too long")
     return bytes([len(b)]) + b
 
 
-IC_STATE_ROOT_DOMAIN_SEPARATOR = b"\x0Dic-state-root"
+IC_STATE_ROOT_DOMAIN_SEPARATOR = domain_sep("ic-state-root")
 IC_BLS_DST = b"BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_NUL_"
 IC_ROOT_KEY = bytes.fromhex(
     "308182301d060d2b0601040182dc7c0503010201060c2b0601040182dc7c05030201036100"
@@ -54,8 +56,6 @@ class BlstUnavailable(RuntimeError):
 def ensure_blst_available() -> "object":
     """
     Ensure the official supranational/blst SWIG binding is available and return the module.
-    - If not installed: raise BlstUnavailable with installation instructions.
-    - If a different 'blst' is shadowing: raise BlstUnavailable describing API mismatch.
     """
     try:
         import blst as _blst  # official supranational/blst SWIG binding
@@ -94,9 +94,9 @@ def verify_bls_signature_blst(signature: bytes, message: bytes, public_key_96: b
     pubkey_bytes = bytes(public_key_96)
     msg_bytes = bytes(message)
 
-    # Quick sanity checks.
     if len(sig_bytes) != 48 or len(pubkey_bytes) != 96:
         return False
+    # quick compressed-format sanity
     if (sig_bytes[0] & 0x80) == 0 or (pubkey_bytes[0] & 0x80) == 0:
         return False
 
@@ -108,7 +108,6 @@ def verify_bls_signature_blst(signature: bytes, message: bytes, public_key_96: b
     except Exception:
         return False
 
-    # Path A: core_verify
     try:
         err = sig_aff.core_verify(pk_aff, True, msg_bytes, IC_BLS_DST, None)
         if err == _blst.BLST_SUCCESS:
@@ -116,7 +115,6 @@ def verify_bls_signature_blst(signature: bytes, message: bytes, public_key_96: b
     except Exception:
         return False
 
-    # Path B: pairing-based verification as a fallback/diagnostic
     try:
         pairing = _blst.Pairing(True, IC_BLS_DST)
         pairing.aggregate(pk_aff, sig_aff, msg_bytes, None)
@@ -153,7 +151,7 @@ class Certificate:
         cert = Certificate(certificate_dict)
         reply = cert.lookup_reply(request_id)
         status = cert.lookup_request_status(request_id)
-        rej = cert.lookup_request_rejection(request_id)
+        rej    = cert.lookup_request_rejection(request_id)
 
         root = cert.root_hash()                # hash tree root
         msg  = cert.signed_message()           # domain_sep('ic-state-root') + root hash
@@ -161,8 +159,6 @@ class Certificate:
         # bls_pubkey = extract_der(der_key)
         # cert.verify_signature(bls_pubkey)
     """
-
-    IC_STATE_ROOT_DOMAIN_SEPARATOR = domain_sep("ic-state-root")
 
     def __init__(self, cert: Dict[str, Any]):
         tree = cert.get("tree", cert.get(b"tree"))
@@ -198,21 +194,27 @@ class Certificate:
     ) -> Optional[str]:
         path = [b"request_status", self._to_bytes(request_id), b"reject_code"]
         value = self.lookup(path)
-        return None if value is None else str(value)
+        if value is None:
+            return None
+        return value.decode("utf-8", "replace") if isinstance(value, (bytes, bytearray, memoryview)) else str(value)
 
     def lookup_reject_message(
         self, request_id: Union[bytes, bytearray, memoryview, str]
     ) -> Optional[str]:
         path = [b"request_status", self._to_bytes(request_id), b"reject_message"]
         value = self.lookup(path)
-        return None if value is None else str(value)
+        if value is None:
+            return None
+        return value.decode("utf-8", "replace") if isinstance(value, (bytes, bytearray, memoryview)) else str(value)
 
     def lookup_error_code(
         self, request_id: Union[bytes, bytearray, memoryview, str]
     ) -> Optional[str]:
         path = [b"request_status", self._to_bytes(request_id), b"error_code"]
         value = self.lookup(path)
-        return None if value is None else str(value)
+        if value is None:
+            return None
+        return value.decode("utf-8", "replace") if isinstance(value, (bytes, bytearray, memoryview)) else str(value)
 
     def lookup_request_rejection(
         self, request_id: Union[bytes, bytearray, memoryview, str]
@@ -243,10 +245,9 @@ class Certificate:
     def _flatten_forks(self, node: Any) -> List[Any]:
         if node[0] == NodeId.Empty.value:
             return []
-        elif node[0] == NodeId.Fork.value:
+        if node[0] == NodeId.Fork.value:
             return self._flatten_forks(node[1]) + self._flatten_forks(node[2])
-        else:
-            return [node]
+        return [node]
 
     def _find_label(self, label: bytes, trees: Sequence[Any]) -> Optional[Any]:
         for node in trees:
@@ -267,28 +268,27 @@ class Certificate:
         if tag == NodeId.Empty.value:
             return hashlib.sha256(DS_EMPTY).digest()
 
-        elif tag == NodeId.Pruned.value:
+        if tag == NodeId.Pruned.value:
             digest_bytes = bytes(tree[1])
             if len(digest_bytes) != 32:
                 raise ValueError("Pruned node must carry a 32-byte digest")
             return digest_bytes
 
-        elif tag == NodeId.Leaf.value:
+        if tag == NodeId.Leaf.value:
             val = bytes(tree[1])
             return hashlib.sha256(DS_LEAF + val).digest()
 
-        elif tag == NodeId.Labeled.value:
+        if tag == NodeId.Labeled.value:
             label = bytes(tree[1])
             sub_digest = self.tree_digest(tree[2])
             return hashlib.sha256(DS_LABELED + label + sub_digest).digest()
 
-        elif tag == NodeId.Fork.value:
+        if tag == NodeId.Fork.value:
             left = self.tree_digest(tree[1])
             right = self.tree_digest(tree[2])
             return hashlib.sha256(DS_FORK + left + right).digest()
 
-        else:
-            raise RuntimeError("unreachable")
+        raise RuntimeError("unreachable")
 
     def root_hash(self) -> bytes:
         """Compute the hashtree root digest."""
@@ -296,7 +296,7 @@ class Certificate:
 
     def signed_message(self) -> bytes:
         """Return domain separator + root hash (the message to be BLS-verified)."""
-        return self.IC_STATE_ROOT_DOMAIN_SEPARATOR + self.root_hash()
+        return IC_STATE_ROOT_DOMAIN_SEPARATOR + self.root_hash()
 
     # ---------------- Delegation and verification ----------------
 
@@ -307,13 +307,12 @@ class Certificate:
         must_verify: bool = True,
     ) -> bytes:
         """
-        Equivalent to the Rust logic:
-          - No delegation: return the IC root DER public key.
-          - With delegation: decode the parent certificate (CBOR),
-              * The parent must NOT itself contain a delegation.
-              * If must_verify=True: cryptographically verify the parent with blst.
-              * Ensure effective_canister_id is within canister_ranges.
-              * Return the subnet DER public_key.
+        - No delegation: return the IC root DER public key.
+        - With delegation: decode the parent certificate (CBOR),
+            * The parent must NOT itself contain a delegation.
+            * If must_verify=True: cryptographically verify the parent with blst.
+            * Ensure effective_canister_id is within canister_ranges.
+            * Return the subnet DER public_key.
         """
         eff = self._to_bytes(effective_canister_id)
 
@@ -367,13 +366,10 @@ class Certificate:
 
     def verify_cert(self, effective_canister_id, *, backend: str = "auto"):
         """
-        Follow the Rust verify_cert flow:
-          - message = b'\\x0D' + 'ic-state-root' + root_hash
-          - obtain DER key from delegation -> extract 96B G2 public key
-          - verify BLS(min_sig) (G1 signature / G2 public key)
+        Verify the certificate against effective_canister_id.
         backend:
-          - "auto" / "blst": verify with blst (will raise if blst is unavailable)
-          - "return_materials": return verification materials (skip cryptographic check)
+          - "auto" / "blst": verify with blst (raises if blst is unavailable)
+          - "return_materials": return verification materials (skip crypto)
         """
         if self.signature is None:
             raise ValueError("certificate missing signature")
@@ -410,8 +406,6 @@ class Certificate:
     ) -> None:
         """
         Validate that this Certificate is valid for the effective_canister_id.
-        - On success: return None.
-        - On failure: raise an exception (parse/authorization/BLS failure, or missing blst).
         Always uses the 'blst' backend (will raise if blst is unavailable).
         """
         eid_bytes = _to_effective_canister_bytes(effective_canister_id)
@@ -428,16 +422,24 @@ class Certificate:
         """
         Verify the certificate timestamp:
           - read the 'time' (nanoseconds) from the certificate
-          - ensure |now - time| <= ingress_expiry_ns
+          - ensure now - time <= ingress_expiry_ns  and  time - now <= ingress_expiry_ns
+            （避免使用绝对值，防止未来时间被误判为合法）
         Raise ValueError if the skew exceeds the allowed window.
         """
         cert_time_ns = self.lookup_time()
         now_ns = time.time_ns()
-        skew = abs(now_ns - cert_time_ns)
-        if skew > int(ingress_expiry_ns):
-            raise ValueError(
-                f"CertificateOutdated: skew={skew}ns > allowed={ingress_expiry_ns}ns"
-            )
+        if now_ns >= cert_time_ns:
+            skew_past = now_ns - cert_time_ns
+            if skew_past > int(ingress_expiry_ns):
+                raise ValueError(
+                    f"CertificateOutdated: skew_past={skew_past}ns > allowed={ingress_expiry_ns}ns"
+                )
+        else:
+            skew_future = cert_time_ns - now_ns
+            if skew_future > int(ingress_expiry_ns):
+                raise ValueError(
+                    f"CertificateFromFuture: skew_future={skew_future}ns > allowed={ingress_expiry_ns}ns"
+                )
 
     def lookup_time(self) -> int:
         """Read and decode the 'time' label from the hashtree (ULEB128, nanoseconds)."""
@@ -454,7 +456,7 @@ class Certificate:
     @staticmethod
     def _to_bytes(x: Union[str, bytes, bytearray, memoryview]) -> bytes:
         if isinstance(x, str):
-            return x.encode()
+            return x.encode("utf-8")
         if isinstance(x, (bytearray, memoryview)):
             return bytes(x)
         if isinstance(x, bytes):

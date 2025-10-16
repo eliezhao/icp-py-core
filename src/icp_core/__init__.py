@@ -17,11 +17,10 @@ from icp_agent.agent import Agent
 from icp_agent.client import Client
 
 # --- canister family ---
-from icp_canister.canister import Canister
-from icp_canister.ledger import Ledger
-from icp_canister.governance import Governance
-from icp_canister.management import Management
-from icp_canister.cycles_wallet import CyclesWallet
+# from icp_canister.ledger import Ledger
+# from icp_canister.governance import Governance
+# from icp_canister.management import Management
+# from icp_canister.cycles_wallet import CyclesWallet
 
 # --- identity ---
 from icp_identity.identity import Identity, DelegateIdentity
@@ -37,7 +36,6 @@ from icp_certificate.certificate import Certificate
 
 __all__ = [
     "Agent", "Client",
-    "Canister", "Ledger", "Governance", "Management", "CyclesWallet",
     "Identity", "DelegateIdentity",
     "encode", "decode", "Types",
     "Principal",
