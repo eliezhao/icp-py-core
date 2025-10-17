@@ -4,22 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import time
-from enum import Enum
-from typing import Any, Dict, List, Optional, Sequence, Union
+from enum import IntEnum
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import cbor2
 import leb128
 
-from icp_principal import Principal
+from icp_principal.principal import Principal
 
 
-class NodeId(Enum):
-    Empty = 0
-    Fork = 1
-    Labeled = 2
-    Leaf = 3
-    Pruned = 4
-
+# ----------------------------- Constants & helpers -----------------------------
 
 def domain_sep(s: str) -> bytes:
     """Return a one-byte length prefix + UTF-8 bytes of the domain string."""
@@ -43,17 +37,26 @@ DS_FORK = domain_sep("ic-hashtree-fork")
 DS_LABELED = domain_sep("ic-hashtree-labeled")
 DS_LEAF = domain_sep("ic-hashtree-leaf")
 
+# Fixed DER prefix for subnet BLS G2 pubkey
 DER_PREFIX = bytes.fromhex(
     "308182301d060d2b0601040182dc7c0503010201060c2b0601040182dc7c05030201036100"
 )
-KEY_LEN = 96
+KEY_LEN = 96  # compressed G2 key length in bytes
+
+
+class NodeId(IntEnum):
+    Empty = 0
+    Fork = 1
+    Labeled = 2
+    Leaf = 3
+    Pruned = 4
 
 
 class BlstUnavailable(RuntimeError):
-    """Raised when the runtime does not provide the official 'blst' Python binding."""
+    """Raised when the official 'blst' Python binding is not available or mismatched."""
 
 
-def ensure_blst_available() -> "object":
+def ensure_blst_available():
     """
     Ensure the official supranational/blst SWIG binding is available and return the module.
     """
@@ -91,23 +94,24 @@ def verify_bls_signature_blst(signature: bytes, message: bytes, public_key_96: b
     _blst = ensure_blst_available()
 
     sig_bytes = bytes(signature)
-    pubkey_bytes = bytes(public_key_96)
+    pk_bytes = bytes(public_key_96)
     msg_bytes = bytes(message)
 
-    if len(sig_bytes) != 48 or len(pubkey_bytes) != 96:
+    if len(sig_bytes) != 48 or len(pk_bytes) != 96:
         return False
-    # quick compressed-format sanity
-    if (sig_bytes[0] & 0x80) == 0 or (pubkey_bytes[0] & 0x80) == 0:
+    # quick compressed-format sanity (MSB should be set per IETF ciphersuite)
+    if (sig_bytes[0] & 0x80) == 0 or (pk_bytes[0] & 0x80) == 0:
         return False
 
     try:
         p1_ctor = getattr(_blst.P1_Affine, "from_compressed", _blst.P1_Affine)
         p2_ctor = getattr(_blst.P2_Affine, "from_compressed", _blst.P2_Affine)
         sig_aff = p1_ctor(sig_bytes)
-        pk_aff = p2_ctor(pubkey_bytes)
+        pk_aff = p2_ctor(pk_bytes)
     except Exception:
         return False
 
+    # A) fast path
     try:
         err = sig_aff.core_verify(pk_aff, True, msg_bytes, IC_BLS_DST, None)
         if err == _blst.BLST_SUCCESS:
@@ -115,6 +119,7 @@ def verify_bls_signature_blst(signature: bytes, message: bytes, public_key_96: b
     except Exception:
         return False
 
+    # B) pairing fallback
     try:
         pairing = _blst.Pairing(True, IC_BLS_DST)
         pairing.aggregate(pk_aff, sig_aff, msg_bytes, None)
@@ -135,43 +140,49 @@ def extract_der(der: bytes) -> bytes:
             f"BLS DER-encoded public key must be {expected_len} bytes long (got {len(der)})"
         )
 
-    prefix = der[: len(DER_PREFIX)]
-    if prefix != DER_PREFIX:
+    if not der.startswith(DER_PREFIX):
+        got = der[: len(DER_PREFIX)].hex()
         raise ValueError(
-            "BLS DER-encoded public key prefix mismatch: "
-            f"expected {DER_PREFIX.hex()}, got {prefix.hex()}"
+            f"BLS DER-encoded public key prefix mismatch: expected {DER_PREFIX.hex()}, got {got}"
         )
 
     return der[len(DER_PREFIX) :]  # 96 bytes
 
 
+# ----------------------------- Certificate -----------------------------
+
 class Certificate:
     """
-    Usage:
-        cert = Certificate(certificate_dict)
+    Certificate wrapper for IC hashtree + BLS verification.
+
+    Typical usage:
+        cert = Certificate(cbor_decoded_certificate_dict)
+        # lookups
         reply = cert.lookup_reply(request_id)
         status = cert.lookup_request_status(request_id)
         rej    = cert.lookup_request_rejection(request_id)
-
-        root = cert.root_hash()                # hash tree root
-        msg  = cert.signed_message()           # domain_sep('ic-state-root') + root hash
-        # der_key = cert.check_delegation(effective_canister_id)
-        # bls_pubkey = extract_der(der_key)
-        # cert.verify_signature(bls_pubkey)
+        # verification
+        cert.assert_certificate_valid(effective_canister_id)
     """
 
     def __init__(self, cert: Dict[str, Any]):
+        # tree
         tree = cert.get("tree", cert.get(b"tree"))
         if tree is None:
             raise ValueError("certificate missing 'tree'")
         self.tree: Any = tree
 
+        # signature
         sig_val = cert.get("signature", cert.get(b"signature"))
         self.signature: Optional[bytes] = bytes(sig_val) if sig_val is not None else None
 
+        # delegation
         self.delegation: Optional[Dict[str, Any]] = cert.get(
             "delegation", cert.get(b"delegation")
         )
+
+        # tiny cache for root hash
+        self._root_hash_cache: Optional[bytes] = None
 
     def read_root_key(self) -> bytes:
         """Return the IC root DER-encoded public key."""
@@ -196,7 +207,7 @@ class Certificate:
         value = self.lookup(path)
         if value is None:
             return None
-        return value.decode("utf-8", "replace") if isinstance(value, (bytes, bytearray, memoryview)) else str(value)
+        return bytes(value).decode("utf-8", "replace")
 
     def lookup_reject_message(
         self, request_id: Union[bytes, bytearray, memoryview, str]
@@ -205,7 +216,7 @@ class Certificate:
         value = self.lookup(path)
         if value is None:
             return None
-        return value.decode("utf-8", "replace") if isinstance(value, (bytes, bytearray, memoryview)) else str(value)
+        return bytes(value).decode("utf-8", "replace")
 
     def lookup_error_code(
         self, request_id: Union[bytes, bytearray, memoryview, str]
@@ -214,7 +225,7 @@ class Certificate:
         value = self.lookup(path)
         if value is None:
             return None
-        return value.decode("utf-8", "replace") if isinstance(value, (bytes, bytearray, memoryview)) else str(value)
+        return bytes(value).decode("utf-8", "replace")
 
     def lookup_request_rejection(
         self, request_id: Union[bytes, bytearray, memoryview, str]
@@ -226,73 +237,90 @@ class Certificate:
         }
 
     def lookup(self, path: Sequence[Union[str, bytes, bytearray, memoryview]]) -> Optional[bytes]:
-        """lookup(path, self.tree)"""
-        return self._lookup_path([self._to_bytes(x) for x in path], self.tree)
+        """Resolve a path against the hash tree; return bytes at Leaf or None."""
+        bpath = [self._to_bytes(x) for x in path]
+        return self._lookup_path(bpath, self.tree)
 
-    def _lookup_path(self, path: Sequence[bytes], tree: Any) -> Optional[bytes]:
+    def _lookup_path(self, path: Sequence[bytes], node: Any) -> Optional[bytes]:
+        """
+        Spec-compliant traversal without flattening forks:
+          - Empty: not found
+          - Fork: try left, then right
+          - Labeled: if label matches current path head, descend
+          - Leaf: success only if path already consumed
+          - Pruned: not traversable (digest only) => not found
+        """
+        tag = node[0]
+
+        if tag == NodeId.Empty.value:
+            return None
+
+        if tag == NodeId.Pruned.value:
+            return None
+
         if not path:
-            # Only return the value if we land on a Leaf.
-            if tree[0] == NodeId.Leaf.value:
-                return bytes(tree[1])
+            # Only success if we are at a Leaf
+            if tag == NodeId.Leaf.value:
+                return bytes(node[1])
             return None
 
-        label = path[0]
-        subtree = self._find_label(label, self._flatten_forks(tree))
-        if subtree is None:
+        if tag == NodeId.Fork.value:
+            left = self._lookup_path(path, node[1])
+            if left is not None:
+                return left
+            return self._lookup_path(path, node[2])
+
+        if tag == NodeId.Labeled.value:
+            want = path[0]
+            have = bytes(node[1])
+            if want == have:
+                return self._lookup_path(path[1:], node[2])
             return None
-        return self._lookup_path(path[1:], subtree)
 
-    def _flatten_forks(self, node: Any) -> List[Any]:
-        if node[0] == NodeId.Empty.value:
-            return []
-        if node[0] == NodeId.Fork.value:
-            return self._flatten_forks(node[1]) + self._flatten_forks(node[2])
-        return [node]
+        if tag == NodeId.Leaf.value:
+            # path not empty but hit a leaf => not found
+            return None
 
-    def _find_label(self, label: bytes, trees: Sequence[Any]) -> Optional[Any]:
-        for node in trees:
-            if node[0] == NodeId.Labeled.value:
-                node_label = bytes(node[1])
-                if label == node_label:
-                    return node[2]
-        return None
+        raise RuntimeError("unreachable")
 
     # ---------------- HashTree digest helpers ----------------
 
-    def tree_digest(self, tree: Optional[Any] = None) -> bytes:
+    def tree_digest(self, node: Optional[Any] = None) -> bytes:
         """Compute the SHA-256 digest of a node according to the IC hashtree scheme."""
-        if tree is None:
-            tree = self.tree
-        tag = tree[0]
+        if node is None:
+            node = self.tree
+        tag = node[0]
 
         if tag == NodeId.Empty.value:
             return hashlib.sha256(DS_EMPTY).digest()
 
         if tag == NodeId.Pruned.value:
-            digest_bytes = bytes(tree[1])
+            digest_bytes = bytes(node[1])
             if len(digest_bytes) != 32:
                 raise ValueError("Pruned node must carry a 32-byte digest")
             return digest_bytes
 
         if tag == NodeId.Leaf.value:
-            val = bytes(tree[1])
+            val = bytes(node[1])
             return hashlib.sha256(DS_LEAF + val).digest()
 
         if tag == NodeId.Labeled.value:
-            label = bytes(tree[1])
-            sub_digest = self.tree_digest(tree[2])
+            label = bytes(node[1])
+            sub_digest = self.tree_digest(node[2])
             return hashlib.sha256(DS_LABELED + label + sub_digest).digest()
 
         if tag == NodeId.Fork.value:
-            left = self.tree_digest(tree[1])
-            right = self.tree_digest(tree[2])
+            left = self.tree_digest(node[1])
+            right = self.tree_digest(node[2])
             return hashlib.sha256(DS_FORK + left + right).digest()
 
         raise RuntimeError("unreachable")
 
     def root_hash(self) -> bytes:
-        """Compute the hashtree root digest."""
-        return self.tree_digest(self.tree)
+        """Compute and cache the hashtree root digest."""
+        if self._root_hash_cache is None:
+            self._root_hash_cache = self.tree_digest(self.tree)
+        return self._root_hash_cache
 
     def signed_message(self) -> bytes:
         """Return domain separator + root hash (the message to be BLS-verified)."""
@@ -316,12 +344,12 @@ class Certificate:
         """
         eff = self._to_bytes(effective_canister_id)
 
-        # No delegation: use the root key.
         if self.delegation is None:
             return self.read_root_key()
 
         deleg = self.delegation
         subnet_id = bytes(deleg["subnet_id"])
+
         try:
             parent_cert_dict = cbor2.loads(deleg["certificate"])
         except Exception as e:
@@ -337,7 +365,7 @@ class Certificate:
             if verified is not True:
                 raise ValueError("ParentCertificateVerificationFailed")
 
-        # Check canister_ranges
+        # canister_ranges
         canister_range_path = [b"subnet", subnet_id, b"canister_ranges"]
         canister_range = parent_cert.lookup(canister_range_path)
         if canister_range is None:
@@ -349,14 +377,14 @@ class Certificate:
             raise ValueError("InvalidCborData: canister_ranges") from e
 
         try:
-            ranges = [(bytes(lo), bytes(hi)) for (lo, hi) in ranges_raw]
+            ranges: List[Tuple[bytes, bytes]] = [(bytes(lo), bytes(hi)) for (lo, hi) in ranges_raw]
         except Exception as e:
             raise ValueError("InvalidCborData: ranges format") from e
 
         if not any(lo <= eff <= hi for (lo, hi) in ranges):
             raise ValueError("CertificateNotAuthorized")
 
-        # Read subnet public key (DER)
+        # subnet public key (DER)
         public_key_path = [b"subnet", subnet_id, b"public_key"]
         der_key = parent_cert.lookup(public_key_path)
         if der_key is None:
@@ -378,8 +406,7 @@ class Certificate:
         if len(sig_bytes) != 48:
             raise ValueError("invalid signature length (expect 48 bytes for G1)")
 
-        root_hash = self.tree_digest()
-        message = IC_STATE_ROOT_DOMAIN_SEPARATOR + root_hash
+        message = IC_STATE_ROOT_DOMAIN_SEPARATOR + self.root_hash()
 
         must_verify_chain = backend != "return_materials"
         der_key = self.check_delegation(effective_canister_id, must_verify=must_verify_chain)
@@ -405,15 +432,14 @@ class Certificate:
         self, effective_canister_id: Union[str, bytes, bytearray, memoryview]
     ) -> None:
         """
-        Validate that this Certificate is valid for the effective_canister_id.
-        Always uses the 'blst' backend (will raise if blst is unavailable).
+        Validate that this Certificate is valid for the effective_canister_id (uses 'blst').
+        - On success: return None.
+        - On failure: raise ValueError/BlstUnavailable。
         """
         eid_bytes = _to_effective_canister_bytes(effective_canister_id)
         result = self.verify_cert(eid_bytes, backend="blst")
         if result is True:
             return
-        if isinstance(result, str):
-            raise RuntimeError(f"BLS backend unavailable: {result}")
         raise RuntimeError("invalid certificate: BLS verification failed")
 
     # ---------------- Timestamp verification ----------------
@@ -421,24 +447,26 @@ class Certificate:
     def verify_cert_timestamp(self, ingress_expiry_ns: int) -> None:
         """
         Verify the certificate timestamp:
-          - read the 'time' (nanoseconds) from the certificate
-          - ensure now - time <= ingress_expiry_ns  and  time - now <= ingress_expiry_ns
-            （避免使用绝对值，防止未来时间被误判为合法）
+          - read 'time' (nanoseconds) from the certificate
+          - require both (now - time) <= ingress_expiry_ns and (time - now) <= ingress_expiry_ns
+            (i.e., reject too-far future certs)
         Raise ValueError if the skew exceeds the allowed window.
         """
         cert_time_ns = self.lookup_time()
         now_ns = time.time_ns()
+        limit = int(ingress_expiry_ns)
+
         if now_ns >= cert_time_ns:
             skew_past = now_ns - cert_time_ns
-            if skew_past > int(ingress_expiry_ns):
+            if skew_past > limit:
                 raise ValueError(
-                    f"CertificateOutdated: skew_past={skew_past}ns > allowed={ingress_expiry_ns}ns"
+                    f"CertificateOutdated: skew_past={skew_past}ns > allowed={limit}ns"
                 )
         else:
             skew_future = cert_time_ns - now_ns
-            if skew_future > int(ingress_expiry_ns):
+            if skew_future > limit:
                 raise ValueError(
-                    f"CertificateFromFuture: skew_future={skew_future}ns > allowed={ingress_expiry_ns}ns"
+                    f"CertificateFromFuture: skew_future={skew_future}ns > allowed={limit}ns"
                 )
 
     def lookup_time(self) -> int:
