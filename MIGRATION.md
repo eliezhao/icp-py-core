@@ -1,145 +1,177 @@
 # Migration Guide: `ic-py` → `icp-py-core`
 
-This guide helps you migrate from **ic-py** to the modular **icp-py-core**.
+This guide helps you migrate existing projects from **ic-py** to **icp-py-core**.
 
 ---
 
-## 1) Package Layout
+## 1) Package Renaming & Layout
 
-**Old (`ic-py`)**
-- One top-level package: `ic` (agent, identity, candid, etc. all mixed)
+**Old (ic-py):**
+- Single top-level package `ic`
+- Mixed modules (agent, identity, candid, etc.) under `ic/`
 
-**New (`icp-py-core`)**
+**New (icp-py-core):**
 - Split into focused subpackages under `src/`:
-  - `icp_agent` — Agent & HTTP client
-  - `icp_candid` — Candid encode/decode & types
-  - `icp_identity` — Ed25519 / Delegation identities
-  - `icp_principal` — Principal utilities
-  - `icp_certificate` — Certificate verification
-  - `icp_core` — **facade** (re-exports common APIs)
+  - `icp_agent`: Agent & HTTP client
+  - `icp_canister`: High-level canister wrappers
+  - `icp_candid`: Candid encode/decode + parser
+  - `icp_identity`: Ed25519 / Secp256k1 identities
+  - `icp_principal`: Principal utilities
+  - `icp_certificate`: Certificate verification
+  - `icp_utils`: constants/utilities
+  - `icp_core`: **unified facade** that re-exports common APIs
 
-> The facade you should import from is **`icp_core`** (not `icp`).  
-> It currently re-exports: `Agent`, `Client`, `Identity`, `DelegateIdentity`,  
-> `encode`, `decode`, `Types`, `Principal`, `Certificate`.
+You can import per subpackage **or** use the **`icp_core` facade** for convenience.
 
 ---
 
 ## 2) Import Mapping
 
-| Old import (`ic-py`)                      | New import (subpackage)                            | New import (**facade**)                         |
-|------------------------------------------|----------------------------------------------------|------------------------------------------------|
-| `from ic.agent import Agent`             | `from icp_agent import Agent`                      | `from icp_core import Agent`                    |
-| `from ic.client import Client`           | `from icp_agent import Client`                     | `from icp_core import Client`                   |
-| `from ic.identity import Identity`       | `from icp_identity import Identity`                | `from icp_core import Identity`                 |
-| *(n/a)* `DelegateIdentity`               | `from icp_identity import DelegateIdentity`        | `from icp_core import DelegateIdentity`         |
-| `from ic.candid import encode`           | `from icp_candid import encode, decode, Types`     | `from icp_core import encode, decode, Types`    |
-| `from ic.principal import Principal`     | `from icp_principal import Principal`              | `from icp_core import Principal`                |
-| `from ic.certificate import Certificate` | `from icp_certificate import Certificate`          | `from icp_core import Certificate`              |
-
-**Example**
+Prefer the facade for most apps:
 
 ```python
-# Before (ic-py)
-from ic.agent import Agent
-from ic.identity import Identity
-from ic.candid import encode
-
-# After (icp-py-core) – subpackages
-from icp_agent import Agent, Client
-from icp_identity import Identity
-from icp_candid import encode
-
-# After (icp-py-core) – facade
-from icp_core import Agent, Client, Identity, encode
+# New (facade):
+from icp_core import (
+    Agent, Client,
+    Identity, DelegateIdentity,
+    Principal, Certificate,
+    encode, decode, Types,
+)
 ```
 
----
+If you want fine-grained imports:
 
-## 3) HTTP Endpoints
-
-- Update calls use **Boundary Node v3**:
-  - `/api/v3/canister/<canister_id>/call`
-- Queries & read_state remain on v2:
-  - `/api/v2/canister/<canister_id>/query`
-  - `/api/v2/canister/<canister_id>/read_state`
-
-Ensure your boundary node supports **v3** for updates.
-
----
-
-## 4) Agent API
-
-Both **high-level** and **low-level** methods are available:
-
-- High-level:
-  - `Agent.query(canister_id, method_name, arg=None, *, return_type=None, effective_canister_id=None)`
-  - `Agent.update(canister_id, method_name, arg=None, *, return_type=None, effective_canister_id=None, verify_certificate=True, ...)`
-
-- Low-level:
-  - `Agent.query_raw(...)`
-  - `Agent.update_raw(..., verify_certificate=False)`  
-    *(set `verify_certificate=True` to enable BLS verification)*
-
-Both styles are compatible with the new request-id hashing and envelope signing.
+| Old import                               | New import (subpackage)                        | New import (facade)              |
+|------------------------------------------|------------------------------------------------|----------------------------------|
+| `from ic.agent import Agent`             | `from icp_agent import Agent`                  | `from icp_core import Agent`     |
+| `from ic.client import Client`           | `from icp_agent import Client`                 | `from icp_core import Client`    |
+| `from ic.identity import Identity`       | `from icp_identity import Identity`            | `from icp_core import Identity`  |
+| `from ic.principal import Principal`     | `from icp_principal import Principal`          | `from icp_core import Principal` |
+| `from ic.candid import encode, decode`   | `from icp_candid import encode, decode, Types` | `from icp_core import encode, decode, Types` |
+| `from ic.certificate import Certificate` | `from icp_certificate import Certificate`      | `from icp_core import Certificate` |
 
 ---
 
-## 5) Certificate Verification (Recommended)
+## 3) Endpoint Changes
 
-Enable full verification on updates:
+- **Update calls** moved from legacy `/api/v2/.../call` to **Boundary Node v3** `/api/v3/canister/.../call`.
+- Ensure your environment allows access to v3 endpoints. The included `Client` already targets v3 for updates.
 
+---
+
+## 4) High-level API Changes (`Agent.query` / `Agent.update`)
+
+`icp-py-core` adds ergonomic methods mirroring Rust/TS agents:
+
+- `Agent.query(canister_id, method_name, arg=None, *, return_type=None, effective_canister_id=None)`
+- `Agent.update(canister_id, method_name, arg=None, *, return_type=None, effective_canister_id=None, verify_certificate=True, ...)`
+
+### Auto-encoding behavior
+Both `query` and `update` **auto-encode** arguments:
+
+- `arg is None` → encodes to empty DIDL (`encode([])`)
+- `arg` is `bytes/bytearray/memoryview` → used **as-is** (no re-encode)
+- Otherwise → passed to `icp_candid.candid.encode()` automatically
+
+> You **should not** pre-encode with `encode(...)` unless you intentionally want to send raw bytes.
+
+### Examples
+
+**Update (auto-encode):**
 ```python
-agent.update(..., verify_certificate=True)
-# or
-agent.update_raw(..., verify_certificate=True)
-```
+from icp_core import Agent, Client, Identity
 
-This uses `icp_certificate.Certificate` and requires the official `blst` binding.  
-If unavailable, keep `verify_certificate=False` for prototyping.
-
----
-
-## 6) Principals & Identities
-
-- `Principal.self_authenticating(...)` accepts **DER-encoded** public keys (strict).
-- `Identity` (Ed25519) and `DelegateIdentity` are available under `icp_identity`.
-- `Principal` helpers live in `icp_principal`.
-
----
-
-## 7) Minimal Migration Example
-
-```python
-# Old
-from ic.agent import Agent
-from ic.client import Client
-from ic.identity import Identity
-from ic.candid import encode
-
-iden = Identity()
 client = Client(url="https://ic0.app")
+iden = Identity(privkey="...hex...")
 agent = Agent(iden, client)
-result = agent.update_raw("ryjl3-tyaaa-aaaaa-aaaba-cai", "set_value", encode([42]))
 
-# New (facade)
-from icp_core import Agent, Client, Identity, encode
-
-iden = Identity()
-client = Client(url="https://ic0.app")
-agent = Agent(iden, client)
+# Auto-encodes [42] to DIDL
 result = agent.update("ryjl3-tyaaa-aaaaa-aaaba-cai", "set_value", [42], verify_certificate=True)
 ```
 
+**Query (auto-encode empty args):**
+```python
+from icp_core import Types
+
+# None → encode([]) under the hood
+reply = agent.query("ryjl3-tyaaa-aaaaa-aaaba-cai", "get_value", None, return_type=[Types.Nat])
+```
+
+**Passing raw bytes intentionally:**
+```python
+from icp_core import encode
+raw = encode([42])          # pre-encode manually if needed
+result = agent.update("ryjl3-tyaaa-aaaaa-aaaba-cai", "set_value", raw, verify_certificate=True)
+```
+
 ---
 
-## 8) Breaking Changes
+## 5) Certificate Verification (Optional but Recommended)
 
-- Facade package is **`icp_core`** (not `icp`).
-- Update endpoint moved to **v3**.
-- `Principal.self_authenticating()` is **DER-only**.
-- `update()` now defaults to `verify_certificate=True`; use `False` if you do not have `blst` installed.
-- Request-id hashing follows the canonical rules (ints → ULEB128, lists hashed element-wise, etc.).
+You can enable verification on updates:
+
+```python
+agent.update(..., verify_certificate=True)
+# or:
+agent.update_raw(..., verify_certificate=True)
+```
+
+- This verifies the BLS signature chain (root/subnet) using the official **blst** Python binding.
+- Install blst from source (not on PyPI). See the project README for steps.
 
 ---
 
-That’s it! You can now import the most-used APIs from **`icp_core`** and rely on the modular internals for clarity and maintainability.
+## 6) Behavior of `update_raw` and Polling
+
+- `update_raw` submits the call and handles:
+  - Immediate `"replied"` (with certificate verification and reply extraction)
+  - `"accepted"` → polling via `poll_and_wait`/`poll`
+  - `"non_replicated_rejection"` → raises with details
+- `poll` uses exponential backoff (configurable) and validates certificates/time skew when `verify_certificate=True`.
+
+You can continue to use the low-level `*_raw` methods if you need full control, but most apps should prefer the ergonomic `query` / `update`.
+
+---
+
+## 7) Identity & Principal Changes
+
+- **SLIP-0010 only** for seed → key derivation (no legacy paths).
+- `Principal.self_authenticating(...)` is now **strict DER (SPKI)** only.
+  - Pass an Ed25519 **SPKI DER** public key (RFC 8410) hex/bytes.
+- `Principal` textual encoding/decoding adheres to IC spec (CRC + base32 with hyphens).
+
+---
+
+## 8) Quick Migration Checklist
+
+1. Replace imports to use `icp_core` (or subpackages).
+2. Stop manually encoding args for `query`/`update` unless you want to pass **raw bytes**.
+3. Ensure your network allows **/api/v3/.../call**.
+4. (Optional) Install **blst** and enable `verify_certificate=True` for stronger security.
+5. For self-authenticating principals, pass **SPKI DER** (not raw 32-byte pubkeys).
+
+---
+
+## 9) Minimal End-to-End Example
+
+```python
+from icp_core import Agent, Client, Identity, Types
+
+client = Client("https://ic0.app")
+iden = Identity(privkey="...hex...")
+agent = Agent(iden, client)
+
+# Update (auto-encode)
+agent.update("ryjl3-tyaaa-aaaaa-aaaba-cai", "set_value", [42], verify_certificate=True)
+
+# Query (auto-encode empty args), decode as Nat
+out = agent.query("ryjl3-tyaaa-aaaaa-aaaba-cai", "get_value", None, return_type=[Types.Nat])
+print(out)
+```
+
+---
+
+If you encounter issues during migration, check:
+- Call endpoint version (v3 for updates)
+- blst installation (if verification enabled)
+- Input arg types (ensure you rely on auto-encoding unless passing raw bytes)

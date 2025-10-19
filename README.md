@@ -3,21 +3,24 @@
 [![PyPI version](https://badge.fury.io/py/icp-py-core.svg)](https://pypi.org/project/icp-py-core/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-**icp-py-core** is a Python Agent Library for the [DFINITY Internet Computer](https://internetcomputer.org).  
-It provides the fundamental building blocks to interact with canisters, including **Candid parsing**, **identity management**, and **agent communication**.
+**icp-py-core** is a modern Python Agent Library for the [DFINITY Internet Computer](https://internetcomputer.org).  
+It provides the essential building blocks for canister interaction — including **Candid parsing**, **identity management**, **principal utilities**, and **agent communication**.
 
 ---
 
 ## 📖 About This Project
 
-This project is a **fork of [ic-py](https://github.com/rocklabs-io/ic-py)**.  
-Since the original maintainer has stopped maintaining `ic-py`, this repository (**icp-py-core**) continues its development with:
+`icp-py-core` is a maintained and extended fork of [ic-py](https://github.com/rocklabs-io/ic-py).  
+This version introduces a modular architecture, protocol upgrades, and new APIs while preserving compatibility with the IC ecosystem.
 
-- **Active maintenance** and timely releases to PyPI  
-- **Security fixes** (certificate verification with `blst`)  
-- **New features** aligned with the Internet Computer roadmap  
+**Highlights:**
+- ✅ Modular structure under `src/` (`icp_agent`, `icp_identity`, `icp_candid`, etc.)
+- ✅ Updated boundary node v3 endpoints (`/api/v3/canister/.../call`)
+- ✅ Optional **certificate verification** via `blst`
+- ✅ Type-safe Candid encoding/decoding
+- ✅ Pythonic high-level `Agent.update()` and `Agent.query()` methods
 
-🙏 Thanks to the original author of `ic-py` for the important contributions to the IC ecosystem.
+🙏 Special thanks to the original `ic-py` author for their foundational work.
 
 ---
 
@@ -29,27 +32,79 @@ pip install icp-py-core
 
 ---
 
-## 🚀 What’s New
+## 🚀 Key Improvements
 
-### Endpoint Upgrade (Milestone 1 ✅)
-- Migrated update calls from legacy `/api/v2/.../call` to the new BN v3 endpoint `/api/v3/canister/.../call`  
-- Adapted response parsing for v3 responses  
-- Added retry logic and fixed poll implementation  
+### ✳️ Modular Codebase
+Each component is isolated for clarity and extensibility:
 
-### Timeouts & Error Classification (Milestone 1 ✅)
-- Added configurable timeout handling  
-- Introduced structured error types for common canister-level failures  
+```
+src/
+├── icp_agent/         # Agent & HTTP Client
+├── icp_identity/      # ed25519 / secp256k1 identities
+├── icp_candid/        # Candid encoder/decoder
+├── icp_principal/     # Principal utilities
+├── icp_certificate/   # Certificate validation
+├── icp_core/          # Unified facade (one-line import)
+```
 
-### Certificate Verification (Milestone 2 ✅)
-- Added optional certificate verification with `blst`  
-- New flag: `agent.update_raw(..., verify_certificate=True)`  
-- Verifies IC responses with **BLS12-381 (G1 signature, G2 public key)**  
+### 🔗 Unified Facade (`icp_core`)
+Import everything from a single entrypoint:
 
-⚠️ **Security note:** Verification is disabled by default. For production, enable it.  
+```python
+from icp_core import (
+    Agent, Client,
+    Identity, DelegateIdentity,
+    Principal, Certificate,
+    encode, decode, Types,
+)
+```
+
+### ⚡ Endpoint Upgrade
+All update calls now target **Boundary Node v3** endpoints:  
+`/api/v3/canister/<canister_id>/call`
+
+### 🔒 Certificate Verification
+Enable verifiable responses via **BLS12-381** signatures with `blst`:
+
+```python
+agent.update("canister-id", "set_value", [42], verify_certificate=True)
+```
 
 ---
 
-## 🔑 Installing blst (optional)
+## 🧩 Example Usage
+
+### Identity
+```python
+from icp_core import Identity
+iden = Identity(privkey="833fe62409237b9d62ec77587520911e9a759cec1d19755b7da901b96dca3d42")
+print(iden.sender().to_str())
+```
+
+### Client & Agent
+```python
+from icp_core import Agent, Client, Identity
+
+iden = Identity()
+client = Client("https://ic0.app")
+agent = Agent(iden, client)
+```
+
+### Update (auto-encode)
+```python
+result = agent.update("wcrzb-2qaaa-aaaap-qhpgq-cai", "set_value", [{'type': Types.Nat, 'value': 2},], verify_certificate=True)
+```
+
+### Query (auto-encode empty args)
+```python
+from icp_core import Types
+reply = agent.query("wcrzb-2qaaa-aaaap-qhpgq-cai", "get_value", None, return_type=[Types.Nat])
+print(reply)
+```
+
+---
+
+## 🔑 Installing `blst` (optional)
 
 ### macOS / Linux
 
@@ -57,137 +112,77 @@ pip install icp-py-core
 git clone https://github.com/supranational/blst
 cd blst/bindings/python
 
-# For Apple Silicon:
+# For Apple Silicon (if needed)
 # export BLST_PORTABLE=1
 
 python3 run.me
 export PYTHONPATH="$PWD:$PYTHONPATH"
 ```
 
-**Or copy to site-packages**
-
+**Or copy to site-packages manually:**
 ```bash
 BLST_SRC="/path/to/blst/bindings/python"
 PYBIN="python3"
 
-SITE_PURE="$($PYBIN -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
-SITE_PLAT="$($PYBIN -c 'import sysconfig; print(sysconfig.get_paths()["platlib"])')"
+SITE_PURE="$($PYBIN -c 'import sysconfig; print(sysconfig.get_paths()[\"purelib\"])')"
+SITE_PLAT="$($PYBIN -c 'import sysconfig; print(sysconfig.get_paths()[\"platlib\"])')"
 
 cp "$BLST_SRC/blst.py" "$SITE_PURE"/
 cp "$BLST_SRC"/_blst*.so "$SITE_PLAT"/
 ```
 
 ### Windows
-- Recommended: WSL2 (Ubuntu)  
+Use **WSL2 (Ubuntu)** for best compatibility.
 
 ---
 
-## ✨ Features
-1. Candid encode & decode  
-2. secp256k1 & ed25519 identities  
-3. Canister DID parsing  
-4. Canister class  
-5. Ledger / management / NNS / cycles wallet  
-6. Async support  
+## 🧠 Features
+
+1. 🧩 Candid encode & decode  
+2. 🔐 ed25519 & secp256k1 identities  
+3. 🧾 Principal utilities (strict DER mode)  
+4. ⚙️ High-level canister calls via Agent  
+5. 🪙 Support for Ledger / Governance / Management / Cycles Wallet  
+6. 🔁 Sync & async APIs  
 
 ---
 
-## 📦 Modules & Usage
+## 🧰 Example — End-to-End
 
-### Principal
 ```python
-from icp_principal import Principal
-p = Principal()
-p1 = Principal(bytes=b'')
-p2 = Principal.anonymous()
-p3 = Principal.self_authenticating(pubkey)
-p4 = Principal.from_str('aaaaa-aa')
-```
+from icp_core import Agent, Client, Identity, Types
 
-### Identity
-```python
-from icp_identity import Identity
-i = Identity()
-i1 = Identity(privkey="833fe62409...dca3d42")
-```
-
-### Client
-```python
-from icp_agent import Client
-client = Client(url="https://ic0.app")
-```
-
-### Candid
-```python
-from icp_candid import encode, decode, Types
-params = [{'type': Types.Nat, 'value': 10}]
-data = encode(params)
-decoded = decode(data)
-```
-
-### Agent
-```python
-from icp_agent import Agent, Client
-from icp_identity import Identity
-from icp_candid import encode
-
+client = Client("https://ic0.app")
 iden = Identity()
-client = Client()
 agent = Agent(iden, client)
 
-name = agent.query_raw("gvbup-jyaaa-aaaah-qcdwa-cai", "name", encode([]))
-```
+# Update (auto-encode [42])
+agent.update("wcrzb-2qaaa-aaaap-qhpgq-cai", "set_value", [42], verify_certificate=True)
 
-### Canister
-```python
-from icp_canister import Canister
-from icp_agent import Agent, Client
-from icp_identity import Identity
-
-iden = Identity()
-client = Client()
-agent = Agent(iden, client)
-gov_did = open("governance.did").read()
-
-gov = Canister(agent, "rrkah-fqaaa-aaaaa-aaaaq-cai", gov_did)
-res = gov.list_proposals({"include_status": [1]})
-```
-
-### Async
-```python
-import asyncio
-from icp_canister import Canister
-from icp_agent import Agent, Client
-from icp_identity import Identity
-
-iden = Identity()
-client = Client()
-agent = Agent(iden, client)
-
-gov_did = open("governance.did").read()
-gov = Canister(agent, "rrkah-fqaaa-aaaaa-aaaaq-cai", gov_did)
-
-async def async_test():
-    res = await gov.list_proposals_async({'include_status': [1]})
-    print(res)
-
-asyncio.run(async_test())
+# Query (auto-encode empty args)
+res = agent.query("wcrzb-2qaaa-aaaap-qhpgq-cai", "get_value", None, return_type=[Types.Nat])
+print(res)
 ```
 
 ---
 
 ## 🗺 Roadmap
 
-See [ROADMAP.md](./ROADMAP.md)  
-Milestone 1 & 2 completed. Future: Candid enhancements, routing, ICRC helpers.  
+See [ROADMAP.md](./ROADMAP.md)
+
+✅ Milestone 1: v3 endpoint migration & polling stability  
+✅ Milestone 2: Certificate verification with `blst`  
+🔜 Milestone 3: ICRC utilities, Candid enhancements, type reflection  
 
 ---
 
 ## 🔖 Version
-- Current release: v2.0.0  
+
+- Current release: **v2.0.0**
 
 ---
 
 ## 🙌 Acknowledgments
-Thanks to the IC community and the original ic-py author.  
 
+Special thanks to the IC community and contributors to the original **ic-py**.  
+`icp-py-core` continues this legacy with modern Python standards and long-term maintenance.

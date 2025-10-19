@@ -3,7 +3,7 @@ import pytest
 from src.icp_agent.agent import *
 from src.icp_identity.identity import *
 from src.icp_agent.client import *
-from src.icp_candid.candid import encode
+from src.icp_candid.candid import encode, Types
 
 CANISTER_ID_TEXT = "wcrzb-2qaaa-aaaap-qhpgq-cai"
 
@@ -15,12 +15,11 @@ def ag() -> "Agent":
         return ag
 
 
-def test_update_raw_sync(ag):
-    arg = encode([])
-
+def test_update_sync(ag):
     t0 = time.perf_counter()
-    # ret = ag.update_raw(CANISTER_ID_TEXT, "set", arg, verify_certificate=True)
-    ret = ag.update(CANISTER_ID_TEXT, "set", [], verify_certificate=True)
+    ret = ag.update(CANISTER_ID_TEXT, "set", [
+        {'type': Types.Nat, 'value': 2},
+    ], verify_certificate=True, return_type=[Types.Nat])
     t1 = time.perf_counter()
 
     latency_ms = (t1 - t0) * 1000
@@ -30,7 +29,7 @@ def test_update_raw_sync(ag):
     assert ret is not None
 
 
-def test_query_raw_sync(ag):
+def test_query_sync(ag):
     t0 = time.perf_counter()
     ret = ag.query(
             CANISTER_ID_TEXT,
