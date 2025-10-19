@@ -7,35 +7,35 @@
 
 ---
 
-## Milestone 1
+## Milestone 1 ✅ *Completed*
 
 - **Endpoint upgrade**
-    - **Issue:** ic-py is still pointing at legacy endpoints and needs to switch to v3
+    - **Issue:** ic-py was pointing at legacy endpoints and needed to switch to v3
     - **References:**
         - [Reducing end-to-end latencies on the Internet Computer](https://forum.dfinity.org/t/reducing-end-to-end-latencies-on-the-internet-computer/34383)
         - [Boundary Node Roadmap (latest v3 endpoints)](https://forum.dfinity.org/t/boundary-node-roadmap/15562/104?u=c-b-elite)
-    - **Solution:** Update ic-py’s default endpoints to the latest BN v3 addresses and maintain them as the roadmap evolves
+    - **Solution:** Updated ic-py’s default endpoints to the latest BN v3 addresses and established maintenance tracking for future roadmap changes
 
 - **Timeouts & error classification**
     - **Issues:** Missing timeouts on agent calls; lack of fine-grained error categories for canister responses (e.g. exhausted cycles, missing WASM)
     - **References:** [#117](https://github.com/rocklabs-io/ic-py/issues/117) • [#115](https://github.com/rocklabs-io/ic-py/issues/115)
     - **Solution:**
-        1. Implement configurable timeouts on all agent calls
-        2. Introduce structured error types for common canister-level failures
+        1. Implemented configurable timeouts on all agent calls
+        2. Introduced structured error types for common canister-level failures
 
 ---
 
-## Milestone 2
+## Milestone 2 ✅ *Completed*
 
 - **IC certificate verification**
-    - **Issue:** `request_status_raw` and `request_status_raw_async` do not verify certificates, allowing a malicious node to tamper with update responses
+    - **Issue:** `request_status_raw` and `request_status_raw_async` did not verify certificates, allowing a malicious node to tamper with update responses
     - **References:**
         - DFINITY forum: [Unmaintained IC agents containing vulnerabilities](https://forum.dfinity.org/t/unmaintained-ic-agents-containing-vulnerabilities/41589?u=marc0olo)
         - GitHub issue [#109](https://github.com/rocklabs-io/ic-py/issues/109)
         - PR [#56](https://github.com/rocklabs-io/ic-py/pull/56/files) • issue [#76](https://github.com/rocklabs-io/ic-py/issues/76)
     - **Solution:**
-        1. Mirror agent-rs’s certificate-checking logic (see [agent-rs implementation](https://github.com/dfinity/agent-rs/blob/b53d770cfd07df07b1024cfd9cc25f7ff80d1b76/ic-agent/src/agent/mod.rs#L903))
-        2. Resolve Python–BLS compatibility by invoking the Rust BLS crate via FFI or another bridging approach
+        1. Mirrored agent-rs’s certificate-checking logic ([agent-rs implementation](https://github.com/dfinity/agent-rs/blob/b53d770cfd07df07b1024cfd9cc25f7ff80d1b76/ic-agent/src/agent/mod.rs#L903))
+        2. Resolved Python–BLS compatibility by bridging Rust BLS crate via FFI
 
 ---
 
