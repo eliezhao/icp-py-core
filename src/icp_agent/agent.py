@@ -190,129 +190,32 @@ class Agent:
         )
 
     def update(
-        self,
-        canister_id,
-        method_name: str,
-        arg=None,
-        *,
-        return_type=None,
-        effective_canister_id=None,
-        verify_certificate: bool = True,
-        initial_delay: float = None,
-        max_interval: float = None,
-        multiplier: float = None,
-        timeout: float = None,
+            self,
+            canister_id,
+            method_name: str,
+            arg=None,
+            *,
+            return_type=None,
+            effective_canister_id=None,
+            verify_certificate: bool = True,
+            initial_delay: float = None,
+            max_interval: float = None,
+            multiplier: float = None,
+            timeout: float = None,
     ):
         """
-        High-level `update` call (submit + poll to completion).
-
-        This method provides a user-friendly interface similar to the Rust and TypeScript IC Agents.
-        It automatically encodes arguments (if not already bytes) and polls until the call
-        reaches a terminal state ("replied" or "rejected").
-
-        Args:
-            canister_id (str | Principal): Target canister ID.
-            method_name (str): The method name to call on the canister.
-            arg (Any, optional):
-                - If None, encodes to empty DIDL (`encode([])`).
-                - If bytes/bytearray/memoryview, used as-is.
-                - Otherwise, passed to `icp_candid.candid.encode()` for automatic Candid encoding.
-            return_type (Any, optional): Expected return type for Candid decoding.
-            effective_canister_id (str | Principal, optional): Effective ID for routing if different.
-            verify_certificate (bool): Whether to verify the certificate and timestamp on responses.
-            initial_delay (float, optional): Initial polling delay (seconds).
-            max_interval (float, optional): Maximum polling interval (seconds).
-            multiplier (float, optional): Exponential backoff multiplier.
-            timeout (float, optional): Maximum total polling duration (seconds).
-
-        Returns:
-            Decoded Candid data or raw bytes (if non-DIDL reply).
-
-        Raises:
-            RuntimeError: On malformed responses or canister rejection.
-            TimeoutError: If polling exceeds timeout duration.
+        High-level update: encode arg to DIDL and delegate to update_raw().
+        Polling/backoff options are handled inside update_raw()/poll().
         """
         didl = self._encode_arg(arg)
-
-        # Prepare the call request
-        req = {
-            "request_type": "call",
-            "sender": self.identity.sender().bytes,
-            "canister_id": (Principal.from_str(canister_id).bytes
-                            if isinstance(canister_id, str) else canister_id.bytes),
-            "method_name": method_name,
-            "arg": didl,
-            "ingress_expiry": self.get_expiry_date(),
-        }
-        request_id, signed_cbor = sign_request(req, self.identity)
-        effective_id = canister_id if effective_canister_id is None else effective_canister_id
-
-        # Submit call
-        http_response = self.call_endpoint(effective_id, signed_cbor)
-        try:
-            response_obj = cbor2.loads(http_response.content)
-        except Exception:
-            raise RuntimeError(f"Malformed update response (non-CBOR): {http_response.content!r}")
-
-        if not isinstance(response_obj, dict) or "status" not in response_obj:
-            raise RuntimeError("Malformed update response: " + repr(response_obj))
-
-        status = response_obj.get("status")
-
-        # Direct replied response
-        if status == "replied":
-            cbor_certificate = response_obj["certificate"]
-            decoded_certificate = cbor2.loads(cbor_certificate)
-            certificate = Certificate(decoded_certificate)
-
-            if verify_certificate:
-                certificate.assert_certificate_valid(effective_id)
-                certificate.verify_cert_timestamp(self.ingress_expiry * NANOSECONDS)
-
-            certified_status = certificate.lookup_request_status(request_id)
-            if isinstance(certified_status, (bytes, bytearray, memoryview)):
-                certified_status = bytes(certified_status).decode("utf-8", "replace")
-
-            if certified_status == "replied":
-                reply_data = certificate.lookup_reply(request_id)
-                return decode(reply_data, return_type)
-            if certified_status == "rejected":
-                rejection = certificate.lookup_request_rejection(request_id)
-                raise RuntimeError(
-                    f"Call rejected (code={rejection['reject_code']}): "
-                    f"{rejection['reject_message']} [error_code={rejection.get('error_code')}]"
-                )
-            # Certificate not yet final — fall through to polling.
-
-        elif status == "non_replicated_rejection":
-            code = response_obj.get("reject_code")
-            message = response_obj.get("reject_message")
-            error = response_obj.get("error_code", "unknown")
-            raise RuntimeError(f"Call rejected (code={code}): {message} [error_code={error}]")
-
-        # Handle polling for completion
-        poll_kwargs = {}
-        if initial_delay is not None: poll_kwargs["initial_delay"] = initial_delay
-        if max_interval  is not None: poll_kwargs["max_interval"]  = max_interval
-        if multiplier    is not None: poll_kwargs["multiplier"]    = multiplier
-        if timeout       is not None: poll_kwargs["timeout"]       = timeout
-
-        status_str, result = self.poll(
-            effective_id,
-            request_id,
-            verify_certificate,
-            **poll_kwargs,
+        return self.update_raw(
+            canister_id,
+            method_name,
+            didl,
+            return_type=return_type,
+            effective_canister_id=effective_canister_id,
+            verify_certificate=verify_certificate,
         )
-
-        if status_str == "replied":
-            return decode(result, return_type)
-        if status_str == "rejected":
-            code = result.get("reject_code")
-            message = result.get("reject_message")
-            error = result.get("error_code", "unknown")
-            raise RuntimeError(f"Call rejected (code={code}): {message} [error_code={error}]")
-
-        raise RuntimeError(f"Unknown final status from poll: {status_str}")
 
     # ----------- Query (one-shot) -----------
 
@@ -380,7 +283,7 @@ class Agent:
             "request_type": "call",
             "sender": self.identity.sender().bytes,
             "canister_id": Principal.from_str(canister_id).bytes
-                if isinstance(canister_id, str) else canister_id.bytes,
+            if isinstance(canister_id, str) else canister_id.bytes,
             "method_name": method_name,
             "arg": arg,
             "ingress_expiry": self.get_expiry_date(),
@@ -409,17 +312,21 @@ class Agent:
                 certificate.verify_cert_timestamp(self.ingress_expiry * NANOSECONDS)
 
             certified_status = certificate.lookup_request_status(request_id)
+            if isinstance(certified_status, (bytes, bytearray, memoryview)):
+                certified_status = bytes(certified_status).decode("utf-8", "replace")
+
             if certified_status == "replied":
                 reply_data = certificate.lookup_reply(request_id)
                 return decode(reply_data, return_type)
             elif certified_status == "rejected":
                 rejection = certificate.lookup_request_rejection(request_id)
                 raise RuntimeError(
-                    f"Call rejected (code={rejection['reject_code']}): "
-                    f"{rejection['reject_message']} [error_code={rejection.get('error_code')}]"
+                    f"Call rejected (code={_safe_str(rejection['reject_code'])}): "
+                    f"{_safe_str(rejection['reject_message'])} "
+                    f"[error_code={_safe_str(rejection.get('error_code'))}]"
                 )
             else:
-                # not yet terminal in certification; continue polling
+                # Not yet terminal in certification; continue polling
                 return self.poll_and_wait(effective_id, request_id, verify_certificate, return_type=return_type)
 
         elif status == "accepted":
@@ -427,9 +334,9 @@ class Agent:
             return self.poll_and_wait(effective_id, request_id, verify_certificate, return_type=return_type)
 
         elif status == "non_replicated_rejection":
-            code = response_obj.get("reject_code")
-            message = response_obj.get("reject_message")
-            error = response_obj.get("error_code", "unknown")
+            code = _safe_str(response_obj.get("reject_code"))
+            message = _safe_str(response_obj.get("reject_message"))
+            error = _safe_str(response_obj.get("error_code")) or "unknown"
             raise RuntimeError(f"Call rejected (code={code}): {message} [error_code={error}]")
 
         else:
