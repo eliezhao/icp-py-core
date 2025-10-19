@@ -4,8 +4,8 @@ import builtins
 import pytest
 import cbor2
 
-from src.icp_principal.principal import Principal
-from src.icp_certificate.certificate import Certificate, extract_der, _to_effective_canister_bytes
+from icp_principal.principal import Principal
+from icp_certificate.certificate import Certificate, extract_der
 
 
 # ---------------- blst availability helper (official binding only) ----------------

@@ -1,9 +1,9 @@
 import pytest
 
-from src.icp_agent.agent import *
-from src.icp_identity.identity import *
-from src.icp_agent.client import *
-from src.icp_candid.candid import encode, Types
+from icp_agent.agent import *
+from icp_identity.identity import *
+from icp_agent.client import *
+from icp_candid.candid import encode, Types
 
 CANISTER_ID_TEXT = "wcrzb-2qaaa-aaaap-qhpgq-cai"
 

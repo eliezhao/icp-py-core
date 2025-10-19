@@ -1,4 +1,4 @@
-from src.icp_agent.client import *
+from icp_agent.client import *
 
 client = Client()
 canister_id = "gvbup-jyaaa-aaaah-qcdwa-cai"
