@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.0.0] - 2025-08-26
+## [1.0.0] - 2025-10-20
 
 ### Added
 - **Optional certificate verification**  

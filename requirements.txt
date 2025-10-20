@@ -1,9 +1,59 @@
-antlr4-python3-runtime >=4.9.3
-cbor2 >=5.4.2
-httpx>=0.22.0
-leb128>=1.0.4
-ecdsa>=0.18.0b2
-mnemonic>=0.20
-zlib>=1.2.13
-setuptools>=72.1.0
-pytest>=8.4.1
+antlr4-python3-runtime==4.9.3
+anyio==3.7.1
+Bottleneck @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_55txi4fy1u/croot/bottleneck_1731058642212/work
+build==1.3.0
+cbor2==5.7.0
+certifi==2025.4.26
+cffi==2.0.0
+charset-normalizer==3.4.2
+docutils==0.22.2
+ecdsa==0.19.1
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+icp-py-core @ file:///Users/elie/PycharmProjects/icp-py-core
+id==1.5.0
+idna==3.10
+iniconfig @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_ba93zhdgbo/croot/iniconfig_1752653743225/work
+jaraco.classes==3.4.0
+jaraco.context==6.0.1
+jaraco.functools==4.3.0
+keyring==25.6.0
+leb128==1.0.4
+markdown-it-py==4.0.0
+mdurl==0.1.2
+mnemonic==0.20
+more-itertools==10.8.0
+multimethod==2.0
+mypy==1.18.2
+mypy_extensions==1.1.0
+nh3==0.3.1
+numexpr @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_b3kvvt6tc6/croot/numexpr_1730215947700/work
+numpy @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_203cjxahp8/croot/numpy_and_numpy_base_1747238033141/work/dist/numpy-2.2.5-cp312-cp312-macosx_11_0_arm64.whl#sha256=cd2680182ee317cec0f33e74a8e67a4193bdc0de2ed1022e070da05b9f16cb24
+packaging @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_b31rpdx1of/croot/packaging_1753775365574/work
+pandas @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_4aifrweohv/croot/pandas_1732735109535/work/dist/pandas-2.2.3-cp312-cp312-macosx_11_0_arm64.whl#sha256=123f63647068e74a9e99f9fd6ab9ee71cd9f6d1c55fa82c75a587a95021910a5
+pathspec==0.12.1
+pluggy @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_bei6q1cvvt/croot/pluggy_1733169621717/work
+pyblst==0.3.13
+pycparser==2.23
+Pygments @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_f0f10r98sf/croot/pygments_1744664126614/work
+PyNaCl==1.6.0
+pyproject_hooks==1.2.0
+pytest @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_11pwnam6uk/croot/pytest_1750675206319/work
+python-dateutil @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_66ud1l42_h/croot/python-dateutil_1716495741162/work
+pytz @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_a4b76c83ik/croot/pytz_1713974318928/work
+readme_renderer==44.0
+requests==2.32.5
+requests-toolbelt==1.0.0
+rfc3986==1.5.0
+rich==14.2.0
+ruff==0.14.1
+setuptools==72.1.0
+six @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_03myqm7p6o/croot/six_1744271511946/work
+sniffio==1.3.1
+twine==6.2.0
+typing_extensions==4.15.0
+tzdata @ file:///croot/python-tzdata_1746123641790/work
+urllib3==2.5.0
+waiter==1.2
+wheel==0.45.1

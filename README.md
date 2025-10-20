@@ -1,18 +1,20 @@
-# icp-py-core
-
-[![PyPI version](https://badge.fury.io/py/icp-py-core.svg)](https://pypi.org/project/icp-py-core/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
----
+# 🐍 ICP-PY-CORE
 
 <p style="center" style="margin:0; padding:0;">
   <img src="pics/icp-py-core-logo.png" alt="ICP-PY-CORE Logo" style="width:100%; max-width:1200px; height:auto; border-radius:8px;" />
+</p>
+
+<p style="center">
+  <a href="https://pypi.org/project/icp-py-core/"><img src="https://badge.fury.io/py/icp-py-core.svg" alt="PyPI version"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://internetcomputer.org"><img src="https://img.shields.io/badge/Powered%20by-Internet%20Computer-blue.svg" alt="Internet Computer"></a>
 </p>
 
 ---
 
 ## 📖 About This Project
 
-`icp-py-core` is a maintained and extended fork of [ic-py](https://github.com/rocklabs-io/ic-py).  
+**ICP-PY-CORE** is a maintained and extended fork of [ic-py](https://github.com/rocklabs-io/ic-py).  
 This version introduces a modular architecture, protocol upgrades, and new APIs while preserving compatibility with the IC ecosystem.
 
 **Highlights:**
@@ -31,6 +33,9 @@ This version introduces a modular architecture, protocol upgrades, and new APIs 
 ```bash
 pip install icp-py-core
 ```
+
+> If you use the Candid parser, we pin `antlr4-python3-runtime==4.9.3`.  
+> For optional certificate verification, see the **blst** section below.
 
 ---
 
@@ -94,13 +99,19 @@ agent = Agent(iden, client)
 
 ### Update (auto-encode)
 ```python
-result = agent.update("wcrzb-2qaaa-aaaap-qhpgq-cai", "set", [{'type': Types.Nat, 'value': 2},], verify_certificate=True, return_type=[Types.Nat])
+from icp_core import Types
+result = agent.update(
+    "wcrzb-2qaaa-aaaap-qhpgq-cai",
+    "set",
+    [{'type': Types.Nat, 'value': 2}],
+    verify_certificate=True,
+    return_type=[Types.Nat],
+)
 ```
 
 ### Query (auto-encode empty args)
 ```python
-from icp_core import Types
-reply = agent.query("wcrzb-2qaaa-aaaap-qhpgq-cai","get",[])
+reply = agent.query("wcrzb-2qaaa-aaaap-qhpgq-cai", "get", [])
 print(reply)
 ```
 
@@ -126,8 +137,8 @@ export PYTHONPATH="$PWD:$PYTHONPATH"
 BLST_SRC="/path/to/blst/bindings/python"
 PYBIN="python3"
 
-SITE_PURE="$($PYBIN -c 'import sysconfig; print(sysconfig.get_paths()[\"purelib\"])')"
-SITE_PLAT="$($PYBIN -c 'import sysconfig; print(sysconfig.get_paths()[\"platlib\"])')"
+SITE_PURE="$($PYBIN -c 'import sysconfig; print(sysconfig.get_paths()[\\"purelib\\"])')"
+SITE_PLAT="$($PYBIN -c 'import sysconfig; print(sysconfig.get_paths()[\\"platlib\\"])')"
 
 cp "$BLST_SRC/blst.py" "$SITE_PURE"/
 cp "$BLST_SRC"/_blst*.so "$SITE_PLAT"/
@@ -168,6 +179,23 @@ print(res)
 
 ---
 
+## 🔄 Migration
+
+Migrating from **ic-py**? See **[MIGRATION.md](./MIGRATION.md)** for:
+- New package layout (`icp_*` subpackages and the `icp_core` facade)
+- Endpoint changes (v3 call)
+- Argument auto-encoding in `Agent.update()` / `Agent.query()`
+- Certificate verification flag
+
+---
+
+## 📝 Changelog
+
+We maintain release notes on GitHub Releases:  
+**https://github.com/eliezhao/icp-py-core/releases**
+
+---
+
 ## 🗺 Roadmap
 
 See [ROADMAP.md](./ROADMAP.md)
@@ -180,11 +208,11 @@ See [ROADMAP.md](./ROADMAP.md)
 
 ## 🔖 Version
 
-- Current release: **v2.0.0**
+- Current release: **v1.0.0**
 
 ---
 
 ## 🙌 Acknowledgments
 
 Special thanks to the IC community and contributors to the original **ic-py**.  
-`icp-py-core` continues this legacy with modern Python standards and long-term maintenance.
+**icp-py-core** continues this legacy with modern Python standards and long-term maintenance.
