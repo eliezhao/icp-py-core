@@ -2,9 +2,11 @@
 
 [![PyPI version](https://badge.fury.io/py/icp-py-core.svg)](https://pypi.org/project/icp-py-core/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+---
 
-**icp-py-core** is a modern Python Agent Library for the [DFINITY Internet Computer](https://internetcomputer.org).  
-It provides the essential building blocks for canister interaction — including **Candid parsing**, **identity management**, **principal utilities**, and **agent communication**.
+<p style="center" style="margin:0; padding:0;">
+  <img src="pics/icp-py-core-logo.png" alt="ICP-PY-CORE Logo" style="width:100%; max-width:1200px; height:auto; border-radius:8px;" />
+</p>
 
 ---
 
@@ -67,7 +69,7 @@ All update calls now target **Boundary Node v3** endpoints:
 Enable verifiable responses via **BLS12-381** signatures with `blst`:
 
 ```python
-agent.update("canister-id", "set_value", [42], verify_certificate=True)
+agent.update("canister-id", "method_name", [{'type': Types.Nat, 'value': 2}], verify_certificate=True)
 ```
 
 ---
@@ -92,13 +94,13 @@ agent = Agent(iden, client)
 
 ### Update (auto-encode)
 ```python
-result = agent.update("wcrzb-2qaaa-aaaap-qhpgq-cai", "set_value", [{'type': Types.Nat, 'value': 2},], verify_certificate=True)
+result = agent.update("wcrzb-2qaaa-aaaap-qhpgq-cai", "set", [{'type': Types.Nat, 'value': 2},], verify_certificate=True, return_type=[Types.Nat])
 ```
 
 ### Query (auto-encode empty args)
 ```python
 from icp_core import Types
-reply = agent.query("wcrzb-2qaaa-aaaap-qhpgq-cai", "get_value", None, return_type=[Types.Nat])
+reply = agent.query("wcrzb-2qaaa-aaaap-qhpgq-cai","get",[])
 print(reply)
 ```
 

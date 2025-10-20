@@ -17,9 +17,7 @@ def ag() -> "Agent":
 
 def test_update_sync(ag):
     t0 = time.perf_counter()
-    ret = ag.update(CANISTER_ID_TEXT, "set", [
-        {'type': Types.Nat, 'value': 2},
-    ], verify_certificate=True, return_type=[Types.Nat])
+    ret = ag.update(CANISTER_ID_TEXT, "set", [{'type': Types.Nat, 'value': 2},], verify_certificate=True, return_type=[Types.Nat])
     t1 = time.perf_counter()
 
     latency_ms = (t1 - t0) * 1000
@@ -31,11 +29,7 @@ def test_update_sync(ag):
 
 def test_query_sync(ag):
     t0 = time.perf_counter()
-    ret = ag.query(
-            CANISTER_ID_TEXT,
-            "get",
-            []
-            )
+    ret = ag.query(CANISTER_ID_TEXT,"get",[])
     t1 = time.perf_counter()
     latency_ms = (t1 - t0) * 1000
     print(f"query_raw latency: {latency_ms:.2f} ms")

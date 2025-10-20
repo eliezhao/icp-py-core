@@ -5,7 +5,7 @@ README = (Path(__file__).parent / "README.md").read_text(encoding="utf-8")
 
 setup(
     name="icp-py-core",
-    version="2.0.0",
+    version="1.0.0",
     description="Python Agent Library for the DFINITY Internet Computer (fork of ic-py)",
     long_description=README,
     long_description_content_type="text/markdown",

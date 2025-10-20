@@ -5,7 +5,7 @@ import pytest
 import cbor2
 
 from icp_principal.principal import Principal
-from icp_certificate.certificate import Certificate, extract_der
+from icp_certificate.certificate import Certificate, extract_der, _to_effective_canister_bytes
 
 
 # ---------------- blst availability helper (official binding only) ----------------
