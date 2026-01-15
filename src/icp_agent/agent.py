@@ -611,6 +611,8 @@ class Agent:
             "arg": arg,
             "ingress_expiry": self.get_expiry_date(),
         }
+        if self.nonce_factory is not None:
+            req["nonce"] = self.nonce_factory()
         request_id, signed_cbor = sign_request(req, self.identity)
         target_canister = canister_id if effective_canister_id is None else effective_canister_id
         result = self.query_endpoint(target_canister, signed_cbor)
@@ -732,6 +734,8 @@ class Agent:
             "arg": arg,
             "ingress_expiry": self.get_expiry_date(),
         }
+        if self.nonce_factory is not None:
+            req["nonce"] = self.nonce_factory()
         request_id, signed_cbor = sign_request(req, self.identity)
         target_canister = canister_id if effective_canister_id is None else effective_canister_id
         result = await self.query_endpoint_async(target_canister, signed_cbor)
@@ -856,6 +860,8 @@ class Agent:
             "arg": arg,
             "ingress_expiry": self.get_expiry_date(),
         }
+        if self.nonce_factory is not None:
+            req["nonce"] = self.nonce_factory()
         request_id, signed_cbor = sign_request(req, self.identity)
         effective_id = canister_id if effective_canister_id is None else effective_canister_id
 
@@ -931,6 +937,8 @@ class Agent:
             "arg": arg,
             "ingress_expiry": self.get_expiry_date(),
         }
+        if self.nonce_factory is not None:
+            req["nonce"] = self.nonce_factory()
         request_id, signed_cbor = sign_request(req, self.identity)
         effective_id = canister_id if effective_canister_id is None else effective_canister_id
 
@@ -966,9 +974,13 @@ class Agent:
         req = {
             "request_type": "read_state",
             "sender": self.identity.sender().bytes,
+            "canister_id": Principal.from_str(canister_id).bytes
+                if isinstance(canister_id, str) else canister_id.bytes,
             "paths": paths,
             "ingress_expiry": self.get_expiry_date(),
         }
+        if self.nonce_factory is not None:
+            req["nonce"] = self.nonce_factory()
         _, signed_cbor = sign_request(req, self.identity)
         
         # Determine effective ID for verification
@@ -999,9 +1011,13 @@ class Agent:
         req = {
             "request_type": "read_state",
             "sender": self.identity.sender().bytes,
+            "canister_id": Principal.from_str(canister_id).bytes
+                if isinstance(canister_id, str) else canister_id.bytes,
             "paths": paths,
             "ingress_expiry": self.get_expiry_date(),
         }
+        if self.nonce_factory is not None:
+            req["nonce"] = self.nonce_factory()
         _, signed_cbor = sign_request(req, self.identity)
         
         target = effective_canister_id if effective_canister_id else canister_id

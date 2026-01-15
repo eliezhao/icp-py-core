@@ -62,6 +62,8 @@ class TransportError(ICError):
         # Sanitize the string representation to avoid leaking complex internal stack traces
         error_msg = str(original_error)
         super().__init__(f"Transport error connecting to ICP Endpoint {url}: {error_msg}")
+        # Set __cause__ for proper exception chaining
+        self.__cause__ = original_error
 
 
 class SecurityError(ICError):
@@ -164,6 +166,8 @@ class PayloadEncodingError(ICError):
         self.original_error = original_error
         if original_error:
             super().__init__(f"{message}: {original_error}")
+            # Set __cause__ for proper exception chaining
+            self.__cause__ = original_error
         else:
             super().__init__(message)
         self.message = message

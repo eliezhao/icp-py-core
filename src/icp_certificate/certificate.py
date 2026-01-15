@@ -17,11 +17,12 @@ import cbor2
 
 from icp_principal.principal import Principal
 from icp_candid.candid import LEB128
-from icp_core.errors import (
-    SignatureVerificationFailed,
-    CertificateVerificationError,
-    LookupPathMissing,
-)
+# Import errors locally to avoid circular import
+# from icp_core.errors import (
+#     SignatureVerificationFailed,
+#     CertificateVerificationError,
+#     LookupPathMissing,
+# )
 
 
 # ----------------------------- Constants & helpers -----------------------------
@@ -450,6 +451,8 @@ class Certificate:
         if backend in ("auto", "blst"):
             ok = verify_bls_signature_blst(sig_bytes, message, bls_pubkey_96)
             if not ok:
+                # Import here to avoid circular import
+                from icp_core.errors import SignatureVerificationFailed
                 raise SignatureVerificationFailed("BLS signature verification failed")
             return True
 
@@ -474,12 +477,19 @@ class Certificate:
             result = self.verify_cert(eid_bytes, backend="blst", skip_canister_range_check=skip_canister_range_check)
             if result is True:
                 return
+            # Import here to avoid circular import
+            from icp_core.errors import CertificateVerificationError
             raise CertificateVerificationError("BLS verification returned False")
-        except SignatureVerificationFailed as e:
-            raise CertificateVerificationError(f"Signature verification failed: {e}") from e
-        except ValueError as e:
-            # Re-raise as CertificateVerificationError for consistency
-            raise CertificateVerificationError(str(e)) from e
+        except Exception as e:
+            # Import here to avoid circular import
+            from icp_core.errors import CertificateVerificationError, SignatureVerificationFailed
+            if isinstance(e, SignatureVerificationFailed):
+                raise CertificateVerificationError(f"Signature verification failed: {e}") from e
+            elif isinstance(e, ValueError):
+                # Re-raise as CertificateVerificationError for consistency
+                raise CertificateVerificationError(str(e)) from e
+            else:
+                raise
 
     # ---------------- Timestamp verification ----------------
 
