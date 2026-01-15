@@ -638,7 +638,9 @@ class Agent:
                     
                     # Extract subnet_id from delegation if present
                     if cert.delegation is not None:
-                        subnet_id = bytes(cert.delegation.get("subnet_id") or cert.delegation.get(b"subnet_id"))
+                        subnet_id_raw = cert.delegation.get("subnet_id") or cert.delegation.get(b"subnet_id")
+                        if subnet_id_raw is not None:
+                            subnet_id = bytes(subnet_id_raw)
                     
                     # If no delegation, this might be NNS canister (no subnet_id needed)
                     # For now, skip verification if subnet_id is not available
@@ -687,11 +689,27 @@ class Agent:
                             continue
                     
                     if not verified:
-                        raise RuntimeError(
-                            f"Replica signature verification failed for all signatures. "
-                            f"Canister: {target_canister}, Request ID: {request_id.hex()}, "
-                            f"Signatures count: {len(signatures)}"
-                        )
+                        # Use the first signature's node_id for error reporting
+                        first_node_id = None
+                        for sig_obj in signatures:
+                            if isinstance(sig_obj, dict) and sig_obj.get("identity"):
+                                node_id = sig_obj.get("identity")
+                                if isinstance(node_id, str):
+                                    node_id = Principal.from_str(node_id).bytes
+                                elif not isinstance(node_id, bytes):
+                                    node_id = bytes(node_id)
+                                first_node_id = node_id
+                                break
+                        if first_node_id:
+                            raise ReplicaSignatureVerificationFailed(
+                                first_node_id, subnet_id, request_id,
+                                f"Replica signature verification failed for all {len(signatures)} signatures"
+                            )
+                        else:
+                            raise ReplicaSignatureVerificationFailed(
+                                b"", subnet_id, request_id,
+                                f"Replica signature verification failed: no valid signatures found"
+                            )
             
             if reply_arg[:4] == b"DIDL":
                 return decode(reply_arg, return_type)
@@ -741,7 +759,9 @@ class Agent:
                     
                     # Extract subnet_id from delegation if present
                     if cert.delegation is not None:
-                        subnet_id = bytes(cert.delegation.get("subnet_id") or cert.delegation.get(b"subnet_id"))
+                        subnet_id_raw = cert.delegation.get("subnet_id") or cert.delegation.get(b"subnet_id")
+                        if subnet_id_raw is not None:
+                            subnet_id = bytes(subnet_id_raw)
                     
                     # If no delegation, this might be NNS canister (no subnet_id needed)
                     # For now, skip verification if subnet_id is not available
@@ -942,7 +962,7 @@ class Agent:
 
     # ----------- Read state -----------
 
-    def read_state_raw(self, canister_id, paths, effective_canister_id=None):
+    def read_state_raw(self, canister_id, paths, effective_canister_id=None, verify_certificate: bool = True):
         req = {
             "request_type": "read_state",
             "sender": self.identity.sender().bytes,
@@ -969,12 +989,13 @@ class Agent:
         
         cert_dict = cbor2.loads(decoded_obj["certificate"])
         certificate = Certificate(cert_dict)
-        certificate.assert_certificate_valid(target)
-        certificate.verify_cert_timestamp(self.ingress_expiry * NANOSECONDS)
+        if verify_certificate:
+            certificate.assert_certificate_valid(target)
+            certificate.verify_cert_timestamp(self.ingress_expiry * NANOSECONDS)
 
         return certificate
 
-    async def read_state_raw_async(self, canister_id, paths, effective_canister_id=None):
+    async def read_state_raw_async(self, canister_id, paths, effective_canister_id=None, verify_certificate: bool = True):
         req = {
             "request_type": "read_state",
             "sender": self.identity.sender().bytes,
@@ -996,8 +1017,9 @@ class Agent:
         decoded_obj = cbor2.loads(raw_bytes)
         cert_dict = cbor2.loads(decoded_obj["certificate"])
         certificate = Certificate(cert_dict)
-        certificate.assert_certificate_valid(target)
-        certificate.verify_cert_timestamp(self.ingress_expiry * NANOSECONDS)
+        if verify_certificate:
+            certificate.assert_certificate_valid(target)
+            certificate.verify_cert_timestamp(self.ingress_expiry * NANOSECONDS)
         
         return certificate
 
@@ -1067,18 +1089,18 @@ class Agent:
 
     # ----------- Request status -----------
 
-    def request_status_raw(self, canister_id, req_id):
+    def request_status_raw(self, canister_id, req_id, verify_certificate: bool = True):
         paths = [[b"request_status", req_id]]
-        certificate = self.read_state_raw(canister_id, paths)
+        certificate = self.read_state_raw(canister_id, paths, verify_certificate=verify_certificate)
         
         status_bytes = certificate.lookup_request_status(req_id)
         if status_bytes is None:
             return status_bytes, certificate
         return status_bytes.decode(), certificate
 
-    async def request_status_raw_async(self, canister_id, req_id):
+    async def request_status_raw_async(self, canister_id, req_id, verify_certificate: bool = True):
         paths = [[b"request_status", req_id]]
-        certificate = await self.read_state_raw_async(canister_id, paths)
+        certificate = await self.read_state_raw_async(canister_id, paths, verify_certificate=verify_certificate)
         
         status_bytes = certificate.lookup_request_status(req_id)
         if status_bytes is None:
@@ -1134,7 +1156,7 @@ class Agent:
         request_accepted = False
 
         while True:
-            status_str, certificate = self.request_status_raw(canister_id, req_id)
+            status_str, certificate = self.request_status_raw(canister_id, req_id, verify_certificate=verify_certificate)
 
             if status_str in ("replied", "done", "rejected"):
                 break
@@ -1152,7 +1174,7 @@ class Agent:
         if status_str == "replied":
             reply_bytes = certificate.lookup_reply(req_id)
             if reply_bytes is None:
-                raise RuntimeError(f"Certificate lookup failed...")
+                raise RuntimeError(f"Certificate lookup failed: reply data not found for request {req_id.hex()}")
             return status_str, reply_bytes
         elif status_str == "rejected":
             rejection_obj = certificate.lookup_request_rejection(req_id)
@@ -1182,7 +1204,7 @@ class Agent:
         request_accepted = False
 
         while True:
-            status_str, certificate = await self.request_status_raw_async(canister_id, req_id)
+            status_str, certificate = await self.request_status_raw_async(canister_id, req_id, verify_certificate=verify_certificate)
 
             if status_str in ("replied", "done", "rejected"):
                 break
@@ -1200,7 +1222,7 @@ class Agent:
         if status_str == "replied":
             reply_bytes = certificate.lookup_reply(req_id)
             if reply_bytes is None:
-                raise RuntimeError(f"Certificate lookup failed...")
+                raise RuntimeError(f"Certificate lookup failed: reply data not found for request {req_id.hex()}")
             return status_str, reply_bytes
         elif status_str == "rejected":
             rejection_obj = certificate.lookup_request_rejection(req_id)
