@@ -19,7 +19,7 @@ This version introduces a modular architecture, protocol upgrades, and new APIs 
 
 **Highlights:**
 - ✅ Modular structure under `src/` (`icp_agent`, `icp_identity`, `icp_candid`, etc.)
-- ✅ Updated boundary node v3 endpoints (`/api/v3/canister/.../call`)
+- ✅ Updated boundary node endpoints (v3/v4: `/api/v3/canister/.../query`, `/api/v4/canister/.../call`)
 - ✅ Optional **certificate verification** via `blst`
 - ✅ Type-safe Candid encoding/decoding
 - ✅ Pythonic high-level `Agent.update()` and `Agent.query()` methods
@@ -75,8 +75,11 @@ from icp_core import (
 ```
 
 ### ⚡ Endpoint Upgrade
-All update calls now target **Boundary Node v3** endpoints:  
-`/api/v3/canister/<canister_id>/call`
+All endpoints now target the latest **Boundary Node** versions:  
+- Query: `/api/v3/canister/<canister_id>/query`
+- Call: `/api/v4/canister/<canister_id>/call`
+- Read State: `/api/v3/canister/<canister_id>/read_state`
+- Read Subnet State: `/api/v3/subnet/<subnet_id>/read_state`
 
 ### 🔒 Certificate Verification
 Certificate verification is **enabled by default** for security. Verifies responses via **BLS12-381** signatures with `blst`:

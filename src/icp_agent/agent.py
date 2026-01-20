@@ -1036,7 +1036,7 @@ class Agent:
         if verify_certificate:
             certificate.assert_certificate_valid(target)
             certificate.verify_cert_timestamp(self.ingress_expiry * NANOSECONDS)
-        
+
         return certificate
 
     def read_state_subnet_raw(self, subnet_id, paths):

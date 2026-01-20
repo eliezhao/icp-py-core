@@ -74,10 +74,10 @@ def main():
 
     # Example 2: Update call - Set a new value using Canister wrapper
     print_section("[2] Update Call: Set Counter Value to 42")
-    print("[!] Note: Using verify_certificate=False (blst not required)")
+    print("[!] Note: Using verify_certificate=True (requires blst)")
     try:
         new_value = 42
-        result = counter.set(new_value)
+        result = counter.set(new_value, verify_certificate=True)
         returned_value = get_result_value(result)
         if returned_value is not None:
             print(f"[+] Set value: {new_value}")
@@ -104,7 +104,7 @@ def main():
             "set",
             [{'type': Types.Nat, 'value': another_value}],
             return_type=[Types.Nat],
-            verify_certificate=False
+            verify_certificate=True
         )
         returned_value = get_result_value(result)
         if returned_value is not None:

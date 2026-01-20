@@ -98,9 +98,10 @@ def test_verify_with_blst_success():
 # ========== Test 5: verify_cert fails when signature is tampered (requires blst) ==========
 @pytest.mark.skipif(not blst_available(), reason="official 'blst' not installed")
 def test_verify_with_blst_bad_signature_raises():
+    from icp_core.errors import SignatureVerificationFailed
     cid_bytes = Principal.from_str(CERT_CANISTER_ID).bytes
     bad_cert = Certificate(_tamper_signature(CERT_SAMPLE))
-    with pytest.raises(ValueError, match="CertificateVerificationFailed"):
+    with pytest.raises(SignatureVerificationFailed, match="BLS signature verification failed"):
         bad_cert.verify_cert(cid_bytes, backend="blst")
 
 

@@ -54,8 +54,10 @@ If you want fine-grained imports:
 
 ## 3) Endpoint Changes
 
-- **Update calls** moved from legacy `/api/v2/.../call` to **Boundary Node v3** `/api/v3/canister/.../call`.
-- Ensure your environment allows access to v3 endpoints. The included `Client` already targets v3 for updates.
+- **Update calls** moved from legacy `/api/v2/.../call` to **Boundary Node v4** `/api/v4/canister/.../call`.
+- **Query calls** moved to **Boundary Node v3** `/api/v3/canister/.../query`.
+- **Read state calls** moved to **Boundary Node v3** endpoints (`/api/v3/canister/.../read_state` and `/api/v3/subnet/.../read_state`).
+- Ensure your environment allows access to v3/v4 endpoints. The included `Client` already targets the latest endpoints.
 
 ---
 

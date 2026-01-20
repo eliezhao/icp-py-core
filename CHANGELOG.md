@@ -132,7 +132,9 @@
 
 ### Changed
 - **Endpoint upgrade**  
-  - Migrated `update_raw` calls from legacy `/api/v2/.../call` endpoint to new **BN v3 call endpoint** (`/api/v3/canister/.../call`).  
+  - Migrated `update_raw` calls from legacy `/api/v2/.../call` endpoint to new **BN v4 call endpoint** (`/api/v4/canister/.../call`).  
+  - Migrated query calls to **BN v3 endpoint** (`/api/v3/canister/.../query`).  
+  - Migrated read_state calls to **BN v3 endpoints** (`/api/v3/canister/.../read_state` and `/api/v3/subnet/.../read_state`).  
   - Implemented response adaptation and improved retry logic for more stable request handling.  
   - Enhanced the `poll` and `poll_and_wait` methods for correctness and resilience.  
 

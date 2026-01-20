@@ -116,10 +116,11 @@ class Client:
             TransportError: If the HTTP request fails or returns an error status code.
         
         Note:
-            Uses the v4 API endpoint: `/api/v4/canister/<canister_id>/call`
-            This endpoint supports canister migrations.
+            Uses the v3 API endpoint: `/api/v3/canister/<canister_id>/call`
+            # Temporarily using v3 instead of v4
+            # v4 endpoint: `/api/v4/canister/<canister_id>/call` (supports canister migrations)
         """
-        endpoint = f"{self.url}/api/v4/canister/{canister_id}/call"
+        endpoint = f"{self.url}/api/v3/canister/{canister_id}/call"
         headers = {"Content-Type": "application/cbor"}
         try:
             resp = httpx.post(endpoint, content=data, headers=headers, timeout=timeout)
@@ -279,9 +280,10 @@ class Client:
         
         Note:
             HTTP/2 is enabled for improved performance when supported by the boundary node.
+            # Temporarily using v3 instead of v4
         """
         async with httpx.AsyncClient(timeout=timeout, http2=True) as client:
-            endpoint = f"{self.url}/api/v4/canister/{canister_id}/call"
+            endpoint = f"{self.url}/api/v3/canister/{canister_id}/call"
             headers = {"Content-Type": "application/cbor"}
             try:
                 resp = await client.post(endpoint, content=data, headers=headers)

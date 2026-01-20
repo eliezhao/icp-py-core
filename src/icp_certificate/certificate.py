@@ -380,14 +380,15 @@ class Certificate:
 
         # canister_ranges check (skip for subnet read_state)
         if not skip_canister_range_check:
-            # Try V3 path first: /subnet/<subnet_id>/canister_ranges
+            # V3 path: /subnet/<subnet_id>/canister_ranges
             canister_range_path_v3 = [b"subnet", subnet_id, b"canister_ranges"]
             canister_range = parent_cert.lookup(canister_range_path_v3)
             
-            # If not found, try V4 path: /canister_ranges/<subnet_id>
-            if canister_range is None:
-                canister_range_path_v4 = [b"canister_ranges", subnet_id]
-                canister_range = parent_cert.lookup(canister_range_path_v4)
+            # Temporarily disabled V4 path check (using v3 endpoint)
+            # # If not found, try V4 path: /canister_ranges/<subnet_id>
+            # if canister_range is None:
+            #     canister_range_path_v4 = [b"canister_ranges", subnet_id]
+            #     canister_range = parent_cert.lookup(canister_range_path_v4)
             
             if canister_range is None:
                 raise ValueError("Missing canister_ranges in delegation certificate")
@@ -474,7 +475,11 @@ class Certificate:
         """
         eid_bytes = _to_effective_canister_bytes(effective_canister_id)
         try:
-            result = self.verify_cert(eid_bytes, backend="blst", skip_canister_range_check=skip_canister_range_check)
+            result = self.verify_cert(
+                eid_bytes, 
+                backend="blst", 
+                skip_canister_range_check=skip_canister_range_check
+            )
             if result is True:
                 return
             # Import here to avoid circular import
