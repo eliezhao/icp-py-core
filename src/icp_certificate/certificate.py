@@ -253,6 +253,95 @@ class Certificate:
         bpath = [self._to_bytes(x) for x in path]
         return self._lookup_path(bpath, self.tree)
 
+    def lookup_tree(self, path: Sequence[Union[str, bytes, bytearray, memoryview]]) -> Optional[Any]:
+        """
+        Resolve a path against the hash tree; return the tree node at that path or None.
+        Unlike lookup(), this returns the node itself rather than extracting bytes from a Leaf.
+        """
+        bpath = [self._to_bytes(x) for x in path]
+        return self._lookup_tree_path(bpath, self.tree)
+
+    def _lookup_tree_path(self, path: Sequence[bytes], node: Any) -> Optional[Any]:
+        """
+        Traverse the tree to find a node at the given path.
+        Returns the node itself (not just Leaf values).
+        """
+        tag = node[0]
+
+        if tag == NodeId.Empty.value:
+            return None
+
+        if tag == NodeId.Pruned.value:
+            return None
+
+        if not path:
+            # Path consumed, return the current node
+            return node
+
+        if tag == NodeId.Fork.value:
+            left = self._lookup_tree_path(path, node[1])
+            if left is not None:
+                return left
+            return self._lookup_tree_path(path, node[2])
+
+        if tag == NodeId.Labeled.value:
+            want = path[0]
+            have = bytes(node[1])
+            if want == have:
+                return self._lookup_tree_path(path[1:], node[2])
+            return None
+
+        if tag == NodeId.Leaf.value:
+            # path not empty but hit a leaf => not found
+            return None
+
+        raise RuntimeError("unreachable")
+
+    def list_paths(self, node: Optional[Any] = None, prefix: List[bytes] = None) -> List[List[bytes]]:
+        """
+        List all paths in the hash tree starting from the given node.
+        Returns a list of paths, where each path is a list of bytes (labels).
+        
+        Args:
+            node: The tree node to start from (defaults to self.tree)
+            prefix: Current path prefix (used recursively)
+        
+        Returns:
+            List of paths, each path is a list of byte labels
+        """
+        if node is None:
+            node = self.tree
+        if prefix is None:
+            prefix = []
+        
+        tag = node[0]
+        paths = []
+
+        if tag == NodeId.Empty.value:
+            return paths
+
+        if tag == NodeId.Pruned.value:
+            return paths
+
+        if tag == NodeId.Leaf.value:
+            # Leaf node: return the current path
+            return [prefix] if prefix else [[]]
+
+        if tag == NodeId.Labeled.value:
+            label = bytes(node[1])
+            subtree = node[2]
+            new_prefix = prefix + [label]
+            return self.list_paths(subtree, new_prefix)
+
+        if tag == NodeId.Fork.value:
+            left = node[1]
+            right = node[2]
+            paths.extend(self.list_paths(left, prefix))
+            paths.extend(self.list_paths(right, prefix))
+            return paths
+
+        raise RuntimeError("unreachable")
+
     def _lookup_path(self, path: Sequence[bytes], node: Any) -> Optional[bytes]:
         """
         Spec-compliant traversal without flattening forks:
@@ -380,18 +469,44 @@ class Certificate:
 
         # canister_ranges check (skip for subnet read_state)
         if not skip_canister_range_check:
-            # V3 path: /subnet/<subnet_id>/canister_ranges
-            canister_range_path_v3 = [b"subnet", subnet_id, b"canister_ranges"]
-            canister_range = parent_cert.lookup(canister_range_path_v3)
+            canister_range_shards_lookup = [b"canister_ranges", subnet_id]
+            canister_range_shards = parent_cert.lookup_tree(canister_range_shards_lookup)
             
-            # Temporarily disabled V4 path check (using v3 endpoint)
-            # # If not found, try V4 path: /canister_ranges/<subnet_id>
-            # if canister_range is None:
-            #     canister_range_path_v4 = [b"canister_ranges", subnet_id]
-            #     canister_range = parent_cert.lookup(canister_range_path_v4)
+            if canister_range_shards is None:
+                raise ValueError("Missing canister_ranges in delegation certificate")
+            
+            shard_paths = parent_cert.list_paths(canister_range_shards)
+            
+            if not shard_paths:
+                raise ValueError("CertificateNotAuthorized")
+            
+            shard_labels = []
+            for path in shard_paths:
+                if path:
+                    shard_labels.append(path[-1])
+            
+            if not shard_labels:
+                raise ValueError("CertificateNotAuthorized")
+            
+            shard_labels.sort()
+            
+            shard_division = 0
+            for i, shard_label in enumerate(shard_labels):
+                if shard_label <= eff:
+                    shard_division = i + 1
+                else:
+                    break
+            
+            if shard_division == 0:
+                raise ValueError("CertificateNotAuthorized")
+            
+            max_potential_shard = shard_labels[shard_division - 1]
+            
+            canister_range_lookup = [max_potential_shard]
+            canister_range = parent_cert._lookup_path(canister_range_lookup, canister_range_shards)
             
             if canister_range is None:
-                raise ValueError("Missing canister_ranges in delegation certificate")
+                raise ValueError("Missing canister_ranges shard data in delegation certificate")
 
             try:
                 ranges_raw = cbor2.loads(canister_range)

@@ -352,7 +352,7 @@ class Agent:
 
         # Fetch from state tree
         try:
-            subnet_id_str = Principal.from_bytes(subnet_id).to_str()
+            subnet_id_str = Principal(subnet_id).to_str()
         except Exception as e:
             raise ValueError(f"Invalid subnet_id format: {subnet_id.hex()}") from e
         
@@ -378,7 +378,7 @@ class Agent:
 
         # Fetch from state tree
         try:
-            subnet_id_str = Principal.from_bytes(subnet_id).to_str()
+            subnet_id_str = Principal(subnet_id).to_str()
         except Exception as e:
             raise ValueError(f"Invalid subnet_id format: {subnet_id.hex()}") from e
         
@@ -405,28 +405,27 @@ class Agent:
         """
         Verify replica-signed query signature.
         
+        Replica-signed queries use Ed25519 or ECDSA signatures (not BLS).
+        BLS is only used for certificates and state root hashes.
+        
         Args:
             request_id: The request ID bytes
             timestamp_ns: Timestamp in nanoseconds
             reply_data: The reply data bytes
-            signature: BLS signature (48 bytes)
+            signature: Ed25519 signature (64 bytes) or ECDSA signature
             node_identity: Node Principal ID
             subnet_id: Subnet Principal ID
             
         Returns:
             True if signature is valid, False otherwise
         """
-        # Step 0: Verify timestamp to prevent replay attacks
-        # According to ICP spec, timestamp should be within a small window (typically 5 minutes)
         now_ns = time.time_ns()
-        max_age_ns = 5 * 60 * NANOSECONDS  # 5 minutes in nanoseconds
+        max_age_ns = 5 * 60 * NANOSECONDS
         if abs(now_ns - timestamp_ns) > max_age_ns:
-            return False  # Timestamp is outside valid window
+            return False
         
-        # Step 1: Construct domain-separated message
-        # Message = H("ic-response") || H(RequestId) || H(Timestamp) || H(ReplyData)
-        # Using Representation Independent Hash for the map
         message_map = {
+            b"status": b"replied",
             b"request_id": request_id,
             b"timestamp": timestamp_ns.to_bytes(8, "big"),
             b"reply": reply_data,
@@ -434,23 +433,27 @@ class Agent:
         message_hash = to_request_id(message_map)
         message = IC_RESPONSE_DOMAIN_SEPARATOR + message_hash
 
-        # Step 2: Get node public key (from cache or state tree)
         node_pubkey = self._get_node_public_key(subnet_id, node_identity)
         
-        # Extract 96-byte BLS public key from DER if needed
-        from icp_certificate.certificate import extract_der
-        try:
-            bls_pubkey_96 = extract_der(node_pubkey)
-        except (ValueError, TypeError):
-            # If not DER format, assume it's already 96 bytes
-            if len(node_pubkey) == 96:
-                bls_pubkey_96 = node_pubkey
+        from icp_principal.principal import _ED25519_SPKI_PREFIX
+        
+        if len(signature) == 64:
+            if node_pubkey.startswith(_ED25519_SPKI_PREFIX):
+                if len(node_pubkey) != len(_ED25519_SPKI_PREFIX) + 32:
+                    return False
+                raw_pubkey = node_pubkey[len(_ED25519_SPKI_PREFIX):]
+                
+                try:
+                    from ecdsa import Ed25519
+                    from ecdsa.keys import VerifyingKey
+                    vk = VerifyingKey.from_string(raw_pubkey, curve=Ed25519)
+                    return vk.verify(signature, message)
+                except Exception:
+                    return False
             else:
-                raise ValueError(f"Invalid node public key format: expected 96 bytes or DER, got {len(node_pubkey)} bytes")
-
-        # Step 3: Verify BLS signature
-        from icp_certificate.certificate import verify_bls_signature_blst
-        return verify_bls_signature_blst(signature, message, bls_pubkey_96)
+                return False
+        else:
+            return False
 
     async def _verify_replica_signature_async(
         self, 
@@ -463,16 +466,16 @@ class Agent:
     ) -> bool:
         """
         Verify replica-signed query signature (async).
-        """
-        # Step 0: Verify timestamp to prevent replay attacks
-        # According to ICP spec, timestamp should be within a small window (typically 5 minutes)
-        now_ns = time.time_ns()
-        max_age_ns = 5 * 60 * NANOSECONDS  # 5 minutes in nanoseconds
-        if abs(now_ns - timestamp_ns) > max_age_ns:
-            return False  # Timestamp is outside valid window
         
-        # Step 1: Construct domain-separated message
+        Replica-signed queries use Ed25519 or ECDSA signatures (not BLS).
+        """
+        now_ns = time.time_ns()
+        max_age_ns = 5 * 60 * NANOSECONDS
+        if abs(now_ns - timestamp_ns) > max_age_ns:
+            return False
+        
         message_map = {
+            b"status": b"replied",
             b"request_id": request_id,
             b"timestamp": timestamp_ns.to_bytes(8, "big"),
             b"reply": reply_data,
@@ -480,23 +483,27 @@ class Agent:
         message_hash = to_request_id(message_map)
         message = IC_RESPONSE_DOMAIN_SEPARATOR + message_hash
 
-        # Step 2: Get node public key (from cache or state tree)
         node_pubkey = await self._get_node_public_key_async(subnet_id, node_identity)
         
-        # Extract 96-byte BLS public key from DER if needed
-        from icp_certificate.certificate import extract_der
-        try:
-            bls_pubkey_96 = extract_der(node_pubkey)
-        except (ValueError, TypeError):
-            # If not DER format, assume it's already 96 bytes
-            if len(node_pubkey) == 96:
-                bls_pubkey_96 = node_pubkey
+        from icp_principal.principal import _ED25519_SPKI_PREFIX
+        
+        if len(signature) == 64:
+            if node_pubkey.startswith(_ED25519_SPKI_PREFIX):
+                if len(node_pubkey) != len(_ED25519_SPKI_PREFIX) + 32:
+                    return False
+                raw_pubkey = node_pubkey[len(_ED25519_SPKI_PREFIX):]
+                
+                try:
+                    from ecdsa import Ed25519
+                    from ecdsa.keys import VerifyingKey
+                    vk = VerifyingKey.from_string(raw_pubkey, curve=Ed25519)
+                    return vk.verify(signature, message)
+                except Exception:
+                    return False
             else:
-                raise ValueError(f"Invalid node public key format: expected 96 bytes or DER, got {len(node_pubkey)} bytes")
-
-        # Step 3: Verify BLS signature
-        from icp_certificate.certificate import verify_bls_signature_blst
-        return verify_bls_signature_blst(signature, message, bls_pubkey_96)
+                return False
+        else:
+            return False
 
     # ----------- HTTP endpoints -----------
 
