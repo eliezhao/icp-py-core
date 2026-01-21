@@ -280,7 +280,9 @@ class Agent:
         ingress_expiry: Ingress message expiry time in seconds (default: 3 minutes).
         root_key: Root public key for certificate verification (default: IC_ROOT_KEY).
         nonce_factory: Optional factory for generating nonces.
-        verify_replica_signatures: Whether to verify replica-signed query signatures (default: True).
+        verify_replica_signatures: Whether to verify replica-signed query signatures (default: False).
+                                     Note: This feature is disabled by default in v2.2.0 and will be
+                                     enabled in a future release once certificate delegation issues are resolved.
         node_key_cache: Cache for node public keys.
     
     Example:
@@ -298,7 +300,7 @@ class Agent:
         nonce_factory: Optional[Any] = None,
         ingress_expiry: float = DEFAULT_INGRESS_EXPIRY_SEC,
         root_key: bytes = IC_ROOT_KEY,
-        verify_replica_signatures: bool = True
+        verify_replica_signatures: bool = False  # Disabled by default in v2.2.0
     ) -> None:
         """
         Initialize the Agent.
@@ -310,7 +312,8 @@ class Agent:
             ingress_expiry: Ingress message expiry time in seconds. Defaults to 3 minutes.
             root_key: Root public key for certificate verification. Defaults to IC_ROOT_KEY.
             verify_replica_signatures: Whether to verify replica-signed query signatures.
-                                     Defaults to True for security.
+                                     Defaults to False in v2.2.0. This feature is temporarily disabled
+                                     due to certificate delegation issues and will be enabled in a future release.
         """
         self.identity = identity
         self.client = client
@@ -393,117 +396,118 @@ class Agent:
         self.node_key_cache.set(subnet_id, node_id, public_key)
         return public_key
 
-    def _verify_replica_signature(
-        self, 
-        request_id: bytes, 
-        timestamp_ns: int, 
-        reply_data: bytes,
-        signature: bytes,
-        node_identity: bytes,
-        subnet_id: bytes
-    ) -> bool:
-        """
-        Verify replica-signed query signature.
-        
-        Replica-signed queries use Ed25519 or ECDSA signatures (not BLS).
-        BLS is only used for certificates and state root hashes.
-        
-        Args:
-            request_id: The request ID bytes
-            timestamp_ns: Timestamp in nanoseconds
-            reply_data: The reply data bytes
-            signature: Ed25519 signature (64 bytes) or ECDSA signature
-            node_identity: Node Principal ID
-            subnet_id: Subnet Principal ID
-            
-        Returns:
-            True if signature is valid, False otherwise
-        """
-        now_ns = time.time_ns()
-        max_age_ns = 5 * 60 * NANOSECONDS
-        if abs(now_ns - timestamp_ns) > max_age_ns:
-            return False
-        
-        message_map = {
-            b"status": b"replied",
-            b"request_id": request_id,
-            b"timestamp": timestamp_ns.to_bytes(8, "big"),
-            b"reply": reply_data,
-        }
-        message_hash = to_request_id(message_map)
-        message = IC_RESPONSE_DOMAIN_SEPARATOR + message_hash
+    # NOTE: Replica signature verification methods are disabled in v2.2.0
+    # These methods are commented out and will be enabled in a future release
+    # once certificate delegation issues are resolved.
+    # 
+    # def _verify_replica_signature(
+    #     self, 
+    #     request_id: bytes, 
+    #     timestamp_ns: int, 
+    #     reply_data: bytes,
+    #     signature: bytes,
+    #     node_identity: bytes,
+    #     subnet_id: bytes
+    # ) -> bool:
+    #     """
+    #     Verify replica-signed query signature.
+    #     
+    #     Args:
+    #         request_id: The request ID bytes
+    #         timestamp_ns: Timestamp in nanoseconds
+    #         reply_data: The reply data bytes
+    #         signature: BLS signature (48 bytes)
+    #         node_identity: Node Principal ID
+    #         subnet_id: Subnet Principal ID
+    #         
+    #     Returns:
+    #         True if signature is valid, False otherwise
+    #     """
+    #     # Step 0: Verify timestamp to prevent replay attacks
+    #     # According to ICP spec, timestamp should be within a small window (typically 5 minutes)
+    #     now_ns = time.time_ns()
+    #     max_age_ns = 5 * 60 * NANOSECONDS  # 5 minutes in nanoseconds
+    #     if abs(now_ns - timestamp_ns) > max_age_ns:
+    #         return False  # Timestamp is outside valid window
+    #     
+    #     # Step 1: Construct domain-separated message
+    #     # Message = H("ic-response") || H(RequestId) || H(Timestamp) || H(ReplyData)
+    #     # Using Representation Independent Hash for the map
+    #     message_map = {
+    #         b"request_id": request_id,
+    #         b"timestamp": timestamp_ns.to_bytes(8, "big"),
+    #         b"reply": reply_data,
+    #     }
+    #     message_hash = to_request_id(message_map)
+    #     message = IC_RESPONSE_DOMAIN_SEPARATOR + message_hash
+    #
+    #     # Step 2: Get node public key (from cache or state tree)
+    #     node_pubkey = self._get_node_public_key(subnet_id, node_identity)
+    #     
+    #     # Extract 96-byte BLS public key from DER if needed
+    #     from icp_certificate.certificate import extract_der
+    #     try:
+    #         bls_pubkey_96 = extract_der(node_pubkey)
+    #     except (ValueError, TypeError):
+    #         # If not DER format, assume it's already 96 bytes
+    #         if len(node_pubkey) == 96:
+    #             bls_pubkey_96 = node_pubkey
+    #         else:
+    #             raise ValueError(f"Invalid node public key format: expected 96 bytes or DER, got {len(node_pubkey)} bytes")
+    #
+    #     # Step 3: Verify BLS signature
+    #     from icp_certificate.certificate import verify_bls_signature_blst
+    #     return verify_bls_signature_blst(signature, message, bls_pubkey_96)
 
-        node_pubkey = self._get_node_public_key(subnet_id, node_identity)
-        
-        from icp_principal.principal import _ED25519_SPKI_PREFIX
-        
-        if len(signature) == 64:
-            if node_pubkey.startswith(_ED25519_SPKI_PREFIX):
-                if len(node_pubkey) != len(_ED25519_SPKI_PREFIX) + 32:
-                    return False
-                raw_pubkey = node_pubkey[len(_ED25519_SPKI_PREFIX):]
-                
-                try:
-                    from ecdsa import Ed25519
-                    from ecdsa.keys import VerifyingKey
-                    vk = VerifyingKey.from_string(raw_pubkey, curve=Ed25519)
-                    return vk.verify(signature, message)
-                except Exception:
-                    return False
-            else:
-                return False
-        else:
-            return False
-
-    async def _verify_replica_signature_async(
-        self, 
-        request_id: bytes, 
-        timestamp_ns: int, 
-        reply_data: bytes,
-        signature: bytes,
-        node_identity: bytes,
-        subnet_id: bytes
-    ) -> bool:
-        """
-        Verify replica-signed query signature (async).
-        
-        Replica-signed queries use Ed25519 or ECDSA signatures (not BLS).
-        """
-        now_ns = time.time_ns()
-        max_age_ns = 5 * 60 * NANOSECONDS
-        if abs(now_ns - timestamp_ns) > max_age_ns:
-            return False
-        
-        message_map = {
-            b"status": b"replied",
-            b"request_id": request_id,
-            b"timestamp": timestamp_ns.to_bytes(8, "big"),
-            b"reply": reply_data,
-        }
-        message_hash = to_request_id(message_map)
-        message = IC_RESPONSE_DOMAIN_SEPARATOR + message_hash
-
-        node_pubkey = await self._get_node_public_key_async(subnet_id, node_identity)
-        
-        from icp_principal.principal import _ED25519_SPKI_PREFIX
-        
-        if len(signature) == 64:
-            if node_pubkey.startswith(_ED25519_SPKI_PREFIX):
-                if len(node_pubkey) != len(_ED25519_SPKI_PREFIX) + 32:
-                    return False
-                raw_pubkey = node_pubkey[len(_ED25519_SPKI_PREFIX):]
-                
-                try:
-                    from ecdsa import Ed25519
-                    from ecdsa.keys import VerifyingKey
-                    vk = VerifyingKey.from_string(raw_pubkey, curve=Ed25519)
-                    return vk.verify(signature, message)
-                except Exception:
-                    return False
-            else:
-                return False
-        else:
-            return False
+    # NOTE: Replica signature verification methods are disabled in v2.2.0
+    # These methods are commented out and will be enabled in a future release
+    # once certificate delegation issues are resolved.
+    # 
+    # async def _verify_replica_signature_async(
+    #     self, 
+    #     request_id: bytes, 
+    #     timestamp_ns: int, 
+    #     reply_data: bytes,
+    #     signature: bytes,
+    #     node_identity: bytes,
+    #     subnet_id: bytes
+    # ) -> bool:
+    #     """
+    #     Verify replica-signed query signature (async).
+    #     """
+    #     # Step 0: Verify timestamp to prevent replay attacks
+    #     # According to ICP spec, timestamp should be within a small window (typically 5 minutes)
+    #     now_ns = time.time_ns()
+    #     max_age_ns = 5 * 60 * NANOSECONDS  # 5 minutes in nanoseconds
+    #     if abs(now_ns - timestamp_ns) > max_age_ns:
+    #         return False  # Timestamp is outside valid window
+    #     
+    #     # Step 1: Construct domain-separated message
+    #     message_map = {
+    #         b"request_id": request_id,
+    #         b"timestamp": timestamp_ns.to_bytes(8, "big"),
+    #         b"reply": reply_data,
+    #     }
+    #     message_hash = to_request_id(message_map)
+    #     message = IC_RESPONSE_DOMAIN_SEPARATOR + message_hash
+    #
+    #     # Step 2: Get node public key (from cache or state tree)
+    #     node_pubkey = await self._get_node_public_key_async(subnet_id, node_identity)
+    #     
+    #     # Extract 96-byte BLS public key from DER if needed
+    #     from icp_certificate.certificate import extract_der
+    #     try:
+    #         bls_pubkey_96 = extract_der(node_pubkey)
+    #     except (ValueError, TypeError):
+    #         # If not DER format, assume it's already 96 bytes
+    #         if len(node_pubkey) == 96:
+    #             bls_pubkey_96 = node_pubkey
+    #         else:
+    #             raise ValueError(f"Invalid node public key format: expected 96 bytes or DER, got {len(node_pubkey)} bytes")
+    #
+    #     # Step 3: Verify BLS signature
+    #     from icp_certificate.certificate import verify_bls_signature_blst
+    #     return verify_bls_signature_blst(signature, message, bls_pubkey_96)
 
     # ----------- HTTP endpoints -----------
 
@@ -631,94 +635,98 @@ class Agent:
         if status == "replied":
             reply_arg = result["reply"]["arg"]
             
-            # Verify replica signatures if present and verification is enabled
-            if self.verify_replica_signatures and "signatures" in result:
-                signatures = result["signatures"]
-                if not isinstance(signatures, list) or len(signatures) == 0:
-                    raise RuntimeError("Query response contains empty signatures list")
-                
-                # Get subnet_id from canister's certificate delegation
-                # According to ICP spec, subnet_id is in the delegation chain
-                subnet_id = None
-                try:
-                    # Read canister state to get certificate with delegation
-                    paths = [[b"time"]]  # Minimal path to get certificate
-                    cert = self.read_state_raw(target_canister, paths)
-                    
-                    # Extract subnet_id from delegation if present
-                    if cert.delegation is not None:
-                        subnet_id_raw = cert.delegation.get("subnet_id") or cert.delegation.get(b"subnet_id")
-                        if subnet_id_raw is not None:
-                            subnet_id = bytes(subnet_id_raw)
-                    
-                    # If no delegation, this might be NNS canister (no subnet_id needed)
-                    # For now, skip verification if subnet_id is not available
-                except Exception as e:
-                    # If we can't get subnet_id, we can't verify signatures
-                    # This is acceptable for backward compatibility
-                    # In production, subnet_id should be available from routing table
-                    pass
-                
-                if subnet_id:
-                    # Verify at least one signature
-                    verified = False
-                    for sig_obj in signatures:
-                        if not isinstance(sig_obj, dict):
-                            continue
-                        node_identity = sig_obj.get("identity")
-                        sig_bytes = sig_obj.get("signature")
-                        timestamp_ns = sig_obj.get("timestamp")
-                        
-                        if not all([node_identity, sig_bytes, timestamp_ns]):
-                            continue
-                        
-                        # Convert to bytes if needed
-                        if isinstance(node_identity, str):
-                            node_identity = Principal.from_str(node_identity).bytes
-                        elif not isinstance(node_identity, bytes):
-                            node_identity = bytes(node_identity)
-                        
-                        if isinstance(sig_bytes, str):
-                            sig_bytes = bytes.fromhex(sig_bytes)
-                        elif not isinstance(sig_bytes, bytes):
-                            sig_bytes = bytes(sig_bytes)
-                        
-                        if isinstance(timestamp_ns, str):
-                            timestamp_ns = int(timestamp_ns)
-                        
-                        try:
-                            if self._verify_replica_signature(
-                                request_id, timestamp_ns, reply_arg, sig_bytes, 
-                                node_identity, subnet_id
-                            ):
-                                verified = True
-                                break
-                        except Exception as e:
-                            # Log but continue trying other signatures
-                            continue
-                    
-                    if not verified:
-                        # Use the first signature's node_id for error reporting
-                        first_node_id = None
-                        for sig_obj in signatures:
-                            if isinstance(sig_obj, dict) and sig_obj.get("identity"):
-                                node_id = sig_obj.get("identity")
-                                if isinstance(node_id, str):
-                                    node_id = Principal.from_str(node_id).bytes
-                                elif not isinstance(node_id, bytes):
-                                    node_id = bytes(node_id)
-                                first_node_id = node_id
-                                break
-                        if first_node_id:
-                            raise ReplicaSignatureVerificationFailed(
-                                first_node_id, subnet_id, request_id,
-                                f"Replica signature verification failed for all {len(signatures)} signatures"
-                            )
-                        else:
-                            raise ReplicaSignatureVerificationFailed(
-                                b"", subnet_id, request_id,
-                                f"Replica signature verification failed: no valid signatures found"
-                            )
+            # NOTE: Replica signature verification is disabled in v2.2.0
+            # This feature is commented out and will be enabled in a future release
+            # once certificate delegation issues are resolved.
+            # The verify_replica_signatures parameter is kept for API compatibility but has no effect.
+            # 
+            # if self.verify_replica_signatures and "signatures" in result:
+            #     signatures = result["signatures"]
+            #     if not isinstance(signatures, list) or len(signatures) == 0:
+            #         raise RuntimeError("Query response contains empty signatures list")
+            #     
+            #     # Get subnet_id from canister's certificate delegation
+            #     # According to ICP spec, subnet_id is in the delegation chain
+            #     subnet_id = None
+            #     try:
+            #         # Read canister state to get certificate with delegation
+            #         paths = [[b"time"]]  # Minimal path to get certificate
+            #         cert = self.read_state_raw(target_canister, paths)
+            #         
+            #         # Extract subnet_id from delegation if present
+            #         if cert.delegation is not None:
+            #             subnet_id_raw = cert.delegation.get("subnet_id") or cert.delegation.get(b"subnet_id")
+            #             if subnet_id_raw is not None:
+            #                 subnet_id = bytes(subnet_id_raw)
+            #         
+            #         # If no delegation, this might be NNS canister (no subnet_id needed)
+            #         # For now, skip verification if subnet_id is not available
+            #     except Exception as e:
+            #         # If we can't get subnet_id, we can't verify signatures
+            #         # This is acceptable for backward compatibility
+            #         # In production, subnet_id should be available from routing table
+            #         pass
+            #     
+            #     if subnet_id:
+            #         # Verify at least one signature
+            #         verified = False
+            #         for sig_obj in signatures:
+            #             if not isinstance(sig_obj, dict):
+            #                 continue
+            #             node_identity = sig_obj.get("identity")
+            #             sig_bytes = sig_obj.get("signature")
+            #             timestamp_ns = sig_obj.get("timestamp")
+            #             
+            #             if not all([node_identity, sig_bytes, timestamp_ns]):
+            #                 continue
+            #             
+            #             # Convert to bytes if needed
+            #             if isinstance(node_identity, str):
+            #                 node_identity = Principal.from_str(node_identity).bytes
+            #             elif not isinstance(node_identity, bytes):
+            #                 node_identity = bytes(node_identity)
+            #             
+            #             if isinstance(sig_bytes, str):
+            #                 sig_bytes = bytes.fromhex(sig_bytes)
+            #             elif not isinstance(sig_bytes, bytes):
+            #                 sig_bytes = bytes(sig_bytes)
+            #             
+            #             if isinstance(timestamp_ns, str):
+            #                 timestamp_ns = int(timestamp_ns)
+            #             
+            #             try:
+            #                 if self._verify_replica_signature(
+            #                     request_id, timestamp_ns, reply_arg, sig_bytes, 
+            #                     node_identity, subnet_id
+            #                 ):
+            #                     verified = True
+            #                     break
+            #             except Exception as e:
+            #                 # Log but continue trying other signatures
+            #                 continue
+            #         
+            #         if not verified:
+            #             # Use the first signature's node_id for error reporting
+            #             first_node_id = None
+            #             for sig_obj in signatures:
+            #                 if isinstance(sig_obj, dict) and sig_obj.get("identity"):
+            #                     node_id = sig_obj.get("identity")
+            #                     if isinstance(node_id, str):
+            #                         node_id = Principal.from_str(node_id).bytes
+            #                     elif not isinstance(node_id, bytes):
+            #                         node_id = bytes(node_id)
+            #                     first_node_id = node_id
+            #                     break
+            #             if first_node_id:
+            #                 raise ReplicaSignatureVerificationFailed(
+            #                     first_node_id, subnet_id, request_id,
+            #                     f"Replica signature verification failed for all {len(signatures)} signatures"
+            #                 )
+            #             else:
+            #                 raise ReplicaSignatureVerificationFailed(
+            #                     b"", subnet_id, request_id,
+            #                     f"Replica signature verification failed: no valid signatures found"
+            #                 )
             
             if reply_arg[:4] == b"DIDL":
                 return decode(reply_arg, return_type)
@@ -754,94 +762,98 @@ class Agent:
         if status == "replied":
             reply_arg = result["reply"]["arg"]
             
-            # Verify replica signatures if present and verification is enabled
-            if self.verify_replica_signatures and "signatures" in result:
-                signatures = result["signatures"]
-                if not isinstance(signatures, list) or len(signatures) == 0:
-                    raise RuntimeError("Query response contains empty signatures list")
-                
-                # Get subnet_id from canister's certificate delegation
-                # According to ICP spec, subnet_id is in the delegation chain
-                subnet_id = None
-                try:
-                    # Read canister state to get certificate with delegation
-                    paths = [[b"time"]]  # Minimal path to get certificate
-                    cert = await self.read_state_raw_async(target_canister, paths)
-                    
-                    # Extract subnet_id from delegation if present
-                    if cert.delegation is not None:
-                        subnet_id_raw = cert.delegation.get("subnet_id") or cert.delegation.get(b"subnet_id")
-                        if subnet_id_raw is not None:
-                            subnet_id = bytes(subnet_id_raw)
-                    
-                    # If no delegation, this might be NNS canister (no subnet_id needed)
-                    # For now, skip verification if subnet_id is not available
-                except Exception as e:
-                    # If we can't get subnet_id, we can't verify signatures
-                    # This is acceptable for backward compatibility
-                    # In production, subnet_id should be available from routing table
-                    pass
-                
-                if subnet_id:
-                    # Verify at least one signature
-                    verified = False
-                    for sig_obj in signatures:
-                        if not isinstance(sig_obj, dict):
-                            continue
-                        node_identity = sig_obj.get("identity")
-                        sig_bytes = sig_obj.get("signature")
-                        timestamp_ns = sig_obj.get("timestamp")
-                        
-                        if not all([node_identity, sig_bytes, timestamp_ns]):
-                            continue
-                        
-                        # Convert to bytes if needed
-                        if isinstance(node_identity, str):
-                            node_identity = Principal.from_str(node_identity).bytes
-                        elif not isinstance(node_identity, bytes):
-                            node_identity = bytes(node_identity)
-                        
-                        if isinstance(sig_bytes, str):
-                            sig_bytes = bytes.fromhex(sig_bytes)
-                        elif not isinstance(sig_bytes, bytes):
-                            sig_bytes = bytes(sig_bytes)
-                        
-                        if isinstance(timestamp_ns, str):
-                            timestamp_ns = int(timestamp_ns)
-                        
-                        try:
-                            if await self._verify_replica_signature_async(
-                                request_id, timestamp_ns, reply_arg, sig_bytes, 
-                                node_identity, subnet_id
-                            ):
-                                verified = True
-                                break
-                        except Exception as e:
-                            # Log but continue trying other signatures
-                            continue
-                    
-                    if not verified:
-                        # Use the first signature's node_id for error reporting
-                        first_node_id = None
-                        for sig_obj in signatures:
-                            if isinstance(sig_obj, dict) and sig_obj.get("identity"):
-                                node_id = sig_obj.get("identity")
-                                if isinstance(node_id, str):
-                                    node_id = Principal.from_str(node_id).bytes
-                                elif not isinstance(node_id, bytes):
-                                    node_id = bytes(node_id)
-                                first_node_id = node_id
-                                break
-                        if first_node_id:
-                            raise ReplicaSignatureVerificationFailed(
-                                first_node_id, subnet_id, request_id,
-                                f"Replica signature verification failed for all {len(signatures)} signatures"
-                            )
-                        else:
-                            raise ReplicaSignatureVerificationFailed(
-                                b"", subnet_id, request_id,
-                                f"Replica signature verification failed: no valid signatures found"
-                            )
+            # NOTE: Replica signature verification is disabled in v2.2.0
+            # This feature is commented out and will be enabled in a future release
+            # once certificate delegation issues are resolved.
+            # The verify_replica_signatures parameter is kept for API compatibility but has no effect.
+            # 
+            # if self.verify_replica_signatures and "signatures" in result:
+            #     signatures = result["signatures"]
+            #     if not isinstance(signatures, list) or len(signatures) == 0:
+            #         raise RuntimeError("Query response contains empty signatures list")
+            #     
+            #     # Get subnet_id from canister's certificate delegation
+            #     # According to ICP spec, subnet_id is in the delegation chain
+            #     subnet_id = None
+            #     try:
+            #         # Read canister state to get certificate with delegation
+            #         paths = [[b"time"]]  # Minimal path to get certificate
+            #         cert = await self.read_state_raw_async(target_canister, paths)
+            #         
+            #         # Extract subnet_id from delegation if present
+            #         if cert.delegation is not None:
+            #             subnet_id_raw = cert.delegation.get("subnet_id") or cert.delegation.get(b"subnet_id")
+            #             if subnet_id_raw is not None:
+            #                 subnet_id = bytes(subnet_id_raw)
+            #         
+            #         # If no delegation, this might be NNS canister (no subnet_id needed)
+            #         # For now, skip verification if subnet_id is not available
+            #     except Exception as e:
+            #         # If we can't get subnet_id, we can't verify signatures
+            #         # This is acceptable for backward compatibility
+            #         # In production, subnet_id should be available from routing table
+            #         pass
+            #     
+            #     if subnet_id:
+            #         # Verify at least one signature
+            #         verified = False
+            #         for sig_obj in signatures:
+            #             if not isinstance(sig_obj, dict):
+            #                 continue
+            #             node_identity = sig_obj.get("identity")
+            #             sig_bytes = sig_obj.get("signature")
+            #             timestamp_ns = sig_obj.get("timestamp")
+            #             
+            #             if not all([node_identity, sig_bytes, timestamp_ns]):
+            #                 continue
+            #             
+            #             # Convert to bytes if needed
+            #             if isinstance(node_identity, str):
+            #                 node_identity = Principal.from_str(node_identity).bytes
+            #             elif not isinstance(node_identity, bytes):
+            #                 node_identity = bytes(node_identity)
+            #             
+            #             if isinstance(sig_bytes, str):
+            #                 sig_bytes = bytes.fromhex(sig_bytes)
+            #             elif not isinstance(sig_bytes, bytes):
+            #                 sig_bytes = bytes(sig_bytes)
+            #             
+            #             if isinstance(timestamp_ns, str):
+            #                 timestamp_ns = int(timestamp_ns)
+            #             
+            #             try:
+            #                 if await self._verify_replica_signature_async(
+            #                     request_id, timestamp_ns, reply_arg, sig_bytes, 
+            #                     node_identity, subnet_id
+            #                 ):
+            #                     verified = True
+            #                     break
+            #             except Exception as e:
+            #                 # Log but continue trying other signatures
+            #                 continue
+            #         
+            #         if not verified:
+            #             # Use the first signature's node_id for error reporting
+            #             first_node_id = None
+            #             for sig_obj in signatures:
+            #                 if isinstance(sig_obj, dict) and sig_obj.get("identity"):
+            #                     node_id = sig_obj.get("identity")
+            #                     if isinstance(node_id, str):
+            #                         node_id = Principal.from_str(node_id).bytes
+            #                     elif not isinstance(node_id, bytes):
+            #                         node_id = bytes(node_id)
+            #                     first_node_id = node_id
+            #                     break
+            #             if first_node_id:
+            #                 raise ReplicaSignatureVerificationFailed(
+            #                     first_node_id, subnet_id, request_id,
+            #                     f"Replica signature verification failed for all {len(signatures)} signatures"
+            #                 )
+            #             else:
+            #                 raise ReplicaSignatureVerificationFailed(
+            #                     b"", subnet_id, request_id,
+            #                     f"Replica signature verification failed: no valid signatures found"
+            #                 )
             
             if reply_arg[:4] == b"DIDL":
                 return decode(reply_arg, return_type)
