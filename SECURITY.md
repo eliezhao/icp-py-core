@@ -6,6 +6,7 @@ We actively support security updates for the following versions:
 
 | Version | Supported          |
 | ------- | ------------------ |
+| 2.2.x   | :white_check_mark: |
 | 2.1.x   | :white_check_mark: |
 | 2.0.x   | :white_check_mark: |
 | < 2.0   | :x:                |
@@ -141,4 +142,4 @@ For security-related inquiries:
 
 ---
 
-**Last Updated**: 2025-01-XX
+**Last Updated**: 2026-02-06

@@ -20,6 +20,10 @@ from icp_core.errors import (
     ReplicaReject,
     PayloadEncodingError,
     IngressExpiryError,
+    TimeoutWaitingForResponse,
+    MissingSignature,
+    TooManySignatures,
+    QuerySignatureVerificationFailed,
 )
 from icp_agent.client import Client
 
@@ -48,6 +52,13 @@ class TestErrorHierarchy:
         assert issubclass(ICError, Exception)
         assert issubclass(TransportError, Exception)
         assert issubclass(SecurityError, Exception)
+
+    def test_timeout_and_query_signature_errors_in_hierarchy(self):
+        """Test TimeoutWaitingForResponse and query-signature errors are ICError/SecurityError."""
+        assert issubclass(TimeoutWaitingForResponse, ICError)
+        assert issubclass(MissingSignature, SecurityError)
+        assert issubclass(TooManySignatures, SecurityError)
+        assert issubclass(QuerySignatureVerificationFailed, SecurityError)
 
 
 class TestTransportError:
@@ -171,6 +182,38 @@ class TestSecurityErrors:
         assert error.node_id == node_id
         assert error.subnet_id == subnet_id
         assert error.request_id == request_id
+
+    def test_timeout_waiting_for_response(self):
+        """Test TimeoutWaitingForResponse."""
+        error = TimeoutWaitingForResponse(
+            "Request timed out",
+            timeout_seconds=30.0,
+            request_id=b"\x01\x02",
+        )
+        assert isinstance(error, ICError)
+        assert error.timeout_seconds == 30.0
+        assert error.request_id == b"\x01\x02"
+        assert "timed out" in str(error) or "Request" in str(error)
+
+    def test_missing_signature(self):
+        """Test MissingSignature."""
+        error = MissingSignature()
+        assert isinstance(error, SecurityError)
+        assert "signature" in str(error).lower() or "missing" in str(error).lower()
+
+    def test_too_many_signatures(self):
+        """Test TooManySignatures."""
+        error = TooManySignatures(had=200, needed=100)
+        assert isinstance(error, SecurityError)
+        assert error.had == 200
+        assert error.needed == 100
+
+    def test_query_signature_verification_failed(self):
+        """Test QuerySignatureVerificationFailed."""
+        error = QuerySignatureVerificationFailed("All signatures invalid")
+        assert isinstance(error, SecurityError)
+        assert error.message == "All signatures invalid"
+        assert "invalid" in str(error)
 
 
 class TestPayloadEncodingError:

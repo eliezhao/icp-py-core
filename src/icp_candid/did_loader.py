@@ -87,8 +87,6 @@ class DIDLoader:
 
             init_args = [self._parse_json_type(t) for t in actor_data['init']]
 
-             
-
         methods = {}
 
         for m in actor_data.get('methods', []):
@@ -103,7 +101,29 @@ class DIDLoader:
 
             )
 
-             
+        # Fallback: when actor is null (e.g. service : () -> TypeName in some parser versions),
+        # use the last Service-typed entry in env as the actor interface (Motoko-style DID).
+        if not methods and data.get('env'):
+
+            for entry in reversed(data['env']):
+
+                def_node = entry.get('datatype')
+
+                if isinstance(def_node, dict) and def_node.get('type') == 'Service':
+
+                    for m in def_node.get('value') or []:
+
+                        methods[m['name']] = Types.Func(
+
+                            [self._parse_json_type(t) for t in m.get('args', [])],
+
+                            [self._parse_json_type(t) for t in m.get('rets', [])],
+
+                            m.get('modes') or []
+
+                        )
+
+                    break
 
         return {
 

@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Configurable query and update timeouts** ⏱️
+  - Default query timeout: **30 seconds** (`DEFAULT_QUERY_TIMEOUT_SEC`); override per call via `timeout` on `Agent.query()`, `Agent.query_async()`, and query endpoint helpers
+  - Default poll timeout for updates: **60 seconds** (`DEFAULT_POLL_TIMEOUT_SECS`); same `timeout` parameter for `Agent.update()` and `Agent.update_async()`
+  - On timeout, the library raises **`TimeoutWaitingForResponse`** (with `timeout_seconds` and optional `request_id`) for consistent handling
+
+- **Verify query response signatures (opt-in)** 🔐
+  - New **`verify_query_signatures=True`** on `Agent` or per call to `Agent.query()` / `Agent.query_async()` to verify replica-signed query responses (default: `False`)
+  - Signable payload built per IC spec (`\x0Bic-response` + request ID and response); Ed25519 verified with subnet node public keys (fetched on demand, cached)
+  - New error types: **`QuerySignatureVerificationFailed`**, **`QueryResponseMissingSignature`**, **`QueryResponseSignatureCountMismatch`** (and existing certificate/node-key errors for debugging)
+
+- **Automatically fetch .did from canister** 📄
+  - **`Canister(agent, canister_id, candid_str=None, auto_fetch_candid=True)`**: when `candid_str` is not provided, the client fetches Candid from the IC (tries public `candid:service`, then private `candid` metadata)
+  - Clear `ValueError` if both fail; passing `candid_str` or `auto_fetch_candid=False` keeps previous behavior (no fetch, manual DID only)
+
+- **Canister async method support** 🔄
+  - For each canister method, an async variant **`<method_name>_async`** is exposed (e.g. `get_async`, `set_async`); same type safety and encoding as sync methods
+  - See **`examples/simple_counter_example_async.py`** for async query/update usage with the Canister wrapper
+
+- **Candid composite query support** 📦
+  - Added Candid support for composite query
+
+### Changed
+
+- **Canister wrapper timeout passthrough** ⏱️
+  - Canister high-level methods pass through `timeout` kwarg to `Agent.query` / `Agent.query_async` and related calls
+
+### Fixed
+
+- **Read state and v4 polling** 🐛
+  - Merged [PR #13](https://github.com/eliezhao/icp-py-core/pull/13): Fix/read state and v4 polling
+
 ## [2.2.1] - 2026-01-22
 
 ### Fixed
