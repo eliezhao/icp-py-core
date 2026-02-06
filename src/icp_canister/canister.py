@@ -169,6 +169,7 @@ class Canister:
             # verify_certificate is a control parameter for agent.update(), not a method argument
             # Default to True to match Agent.update() default behavior for security
             verify_certificate = kwargs.pop('verify_certificate', True)
+            timeout = kwargs.pop('timeout', None)
             
             # 3. Handle kwargs: if kwargs are provided and no args, convert kwargs to a single record argument
             # This allows calling methods like: method(field1=val1, field2=val2) for single-record methods
@@ -200,20 +201,30 @@ class Canister:
             # 7. Execute network request using Agent's high-level query/update methods
             # These methods automatically encode args and decode return values
             if is_query:
+                query_kwargs = dict(
+                    arg=processed_args if processed_args else None,
+                    return_type=ret_types,
+                )
+                if timeout is not None:
+                    query_kwargs['timeout'] = timeout
                 res = self.agent.query(
                     self.canister_id,
                     name,
-                    arg=processed_args if processed_args else None,
-                    return_type=ret_types
+                    **query_kwargs,
                 )
             else:
                 # verify_certificate was already extracted in step 2
+                update_kwargs = dict(
+                    arg=processed_args if processed_args else None,
+                    return_type=ret_types,
+                    verify_certificate=verify_certificate,
+                )
+                if timeout is not None:
+                    update_kwargs['timeout'] = timeout
                 res = self.agent.update(
                     self.canister_id,
                     name,
-                    arg=processed_args if processed_args else None,
-                    return_type=ret_types,
-                    verify_certificate=verify_certificate
+                    **update_kwargs,
                 )
             
             # 7. Return the result (already decoded by query/update methods)
@@ -230,6 +241,7 @@ class Canister:
             arg_types = method_type.argTypes
             ret_types = method_type.retTypes
             verify_certificate = kwargs.pop('verify_certificate', True)
+            timeout = kwargs.pop('timeout', None)
 
             if kwargs and not args and len(arg_types) == 1:
                 args = (kwargs,)
@@ -250,19 +262,29 @@ class Canister:
             is_query = 'query' in annotations
 
             if is_query:
+                query_kwargs = dict(
+                    arg=processed_args if processed_args else None,
+                    return_type=ret_types,
+                )
+                if timeout is not None:
+                    query_kwargs['timeout'] = timeout
                 res = await self.agent.query_async(
                     self.canister_id,
                     name,
-                    arg=processed_args if processed_args else None,
-                    return_type=ret_types
+                    **query_kwargs,
                 )
             else:
+                update_kwargs = dict(
+                    arg=processed_args if processed_args else None,
+                    return_type=ret_types,
+                    verify_certificate=verify_certificate,
+                )
+                if timeout is not None:
+                    update_kwargs['timeout'] = timeout
                 res = await self.agent.update_async(
                     self.canister_id,
                     name,
-                    arg=processed_args if processed_args else None,
-                    return_type=ret_types,
-                    verify_certificate=verify_certificate
+                    **update_kwargs,
                 )
 
             return res

@@ -1318,10 +1318,28 @@ class Agent:
         try:
             response_obj = cbor2.loads(http_response.content)
         except Exception:
-            raise RuntimeError(f"Malformed update response (non-CBOR): {http_response.content!r}")
+            response_obj = None
 
         if not isinstance(response_obj, dict) or "status" not in response_obj:
-            raise RuntimeError("Malformed update response: " + repr(response_obj))
+            # The v4 /call endpoint may return a non-CBOR or incomplete response
+            # when the canister takes too long for a synchronous reply.
+            if http_response.status_code == 202:
+                # Call was accepted but not yet complete; poll for result.
+                return self.poll_and_wait(
+                    effective_id,
+                    request_id,
+                    verify_certificate,
+                    return_type=return_type,
+                    timeout=poll_timeout,
+                    initial_delay=initial_delay,
+                    max_interval=max_interval,
+                    multiplier=multiplier,
+                )
+            # Not 202 — the call was likely not accepted. Report the actual response.
+            raise RuntimeError(
+                f"v4 /call returned HTTP {http_response.status_code} "
+                f"with non-CBOR body: {http_response.content[:200]!r}"
+            )
 
         status = response_obj.get("status")
 
@@ -1466,11 +1484,11 @@ class Agent:
     # ----------- Read state -----------
 
     def read_state_raw(self, canister_id, paths, effective_canister_id=None, verify_certificate: bool = True):
+        # IC spec: read_state content map does NOT include canister_id.
+        # The canister_id is only in the URL path for routing.
         req = {
             "request_type": "read_state",
             "sender": self.identity.sender().bytes,
-            "canister_id": Principal.from_str(canister_id).bytes
-                if isinstance(canister_id, str) else canister_id.bytes,
             "paths": paths,
             "ingress_expiry": self.get_expiry_date(),
         }
@@ -1503,11 +1521,10 @@ class Agent:
         return certificate
 
     async def read_state_raw_async(self, canister_id, paths, effective_canister_id=None, verify_certificate: bool = True):
+        # IC spec: read_state content map does NOT include canister_id.
         req = {
             "request_type": "read_state",
             "sender": self.identity.sender().bytes,
-            "canister_id": Principal.from_str(canister_id).bytes
-                if isinstance(canister_id, str) else canister_id.bytes,
             "paths": paths,
             "ingress_expiry": self.get_expiry_date(),
         }
