@@ -1,0 +1,28 @@
+{
+  "request_id_hex": "dc840a86e9f74f0b418e0cbdb492bf911e2025601876ed07c27ad421193c3b28",
+  "canister_id": "wcrzb-2qaaa-aaaap-qhpgq-cai",
+  "response": {
+    "status": "replied",
+    "reply": {
+      "arg": {
+        "__bytes_hex": "4449444c00017d64",
+        "__len": 8
+      }
+    },
+    "signatures": [
+      {
+        "timestamp": {
+          "__bigint": "1770386040519254542"
+        },
+        "signature": {
+          "__bytes_hex": "8b6248cf8856427b8ac6986936f365dfe1197886cfde3031b147ba9c68896471f9fffacd712ff56b1628767a249ff14397646b1f0d3b12601e0c20dcfac57504",
+          "__len": 64
+        },
+        "identity": {
+          "__bytes_hex": "a67e7889e6d42d91ac8c5d1d2c2adcc53887f7a5aceebcb8af143f7c02",
+          "__len": 29
+        }
+      }
+    ]
+  }
+}
