@@ -986,7 +986,7 @@ class FuncClass(ConstructType):
                LEB128.encode_u(len(self.rets)) +
                b"".join(r.encodeType(typeTable) for r in self.rets) +
                LEB128.encode_u(len(self.modes)) +
-               b"".join((b"\x01" if m in ["query", "composite_query"] else b"\x02") for m in self.modes))
+               b"".join((b"\x01" if m == "query" else (b"\x02" if m == "oneway" else b"\x03")) for m in self.modes))
 
         typeTable.update(self, buf)
 
@@ -1116,7 +1116,12 @@ def decode(data: bytes, retTypes=None):
 
             rets = [_resolve_idx(LEB128.decode_i(b), raw_table) for _ in range(LEB128.decode_u(b))]
 
-            modes = ["query" if b.read_byte() == 1 else "oneway" for _ in range(LEB128.decode_u(b))]
+            def _decode_mode(byte_val: int) -> str:
+                if byte_val == 1: return "query"
+                if byte_val == 2: return "oneway"
+                if byte_val == 3: return "composite_query"
+                return "oneway"  # fallback for unknown
+            modes = [_decode_mode(b.read_byte()) for _ in range(LEB128.decode_u(b))]
 
             t = Types.Func(args, rets, modes)
 

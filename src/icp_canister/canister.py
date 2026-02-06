@@ -194,9 +194,10 @@ class Canister:
                     processed_args.append({'type': arg_types[i], 'value': val})
             
             # 6. Determine if it's a Query or Update call
-            # annotations is a list, e.g. ['query'] or []
+            # annotations (modes) can be ['query'], ['composite_query'], or [] (oneway/update)
+            # composite_query is read-only and must use the query endpoint
             annotations = method_type.annotations
-            is_query = 'query' in annotations
+            is_query = 'query' in annotations or 'composite_query' in annotations
 
             # 7. Execute network request using Agent's high-level query/update methods
             # These methods automatically encode args and decode return values
@@ -258,8 +259,9 @@ class Canister:
                 if i < len(arg_types):
                     processed_args.append({'type': arg_types[i], 'value': val})
 
+            # composite_query is read-only and must use the query endpoint
             annotations = method_type.annotations
-            is_query = 'query' in annotations
+            is_query = 'query' in annotations or 'composite_query' in annotations
 
             if is_query:
                 query_kwargs = dict(

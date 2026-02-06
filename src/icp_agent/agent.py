@@ -193,8 +193,10 @@ def to_request_id(d: dict) -> bytes:
             # Use encode_list for lists
             h_v = hashlib.sha256(encode_list(v)).digest()
         elif isinstance(v, int):
-            # Encode integers as LEB128
-            h_v = hashlib.sha256(LEB128.encode_u(v)).digest()
+            # Spec: natural numbers use Unsigned LEB128, integers use Signed LEB128.
+            # Request content only has nats (e.g. ingress_expiry); Signed LEB128
+            # matches ULEB128 for non-negative values, so use encode_i for full compliance.
+            h_v = hashlib.sha256(LEB128.encode_i(v)).digest()
         elif isinstance(v, (bytes, bytearray, memoryview)):
             # Hash bytes directly
             h_v = hashlib.sha256(bytes(v)).digest()
@@ -362,7 +364,7 @@ def encode_list(l: list) -> bytes:
     
     This function converts a list into a canonical byte representation by:
     - Recursively encoding nested lists
-    - Encoding integers as ULEB128
+    - Encoding integers as Signed LEB128 (per spec)
     - Using raw bytes for bytes/bytearray/memoryview
     - Encoding strings as UTF-8
     - Using CBOR encoding as a fallback for other types
@@ -384,7 +386,7 @@ def encode_list(l: list) -> bytes:
         if isinstance(item, list):
             v = encode_list(item)
         elif isinstance(item, int):
-            v = LEB128.encode_u(item)
+            v = LEB128.encode_i(item)
         elif isinstance(item, (bytes, bytearray, memoryview)):
             v = bytes(item)
         elif isinstance(item, str):
@@ -1452,11 +1454,9 @@ class Agent:
 
         _ = await self.call_endpoint_async(effective_id, request_id, signed_cbor)
 
-        # Merge timeout into kwargs if provided
-        poll_kwargs = {**kwargs}
-        if timeout is not None:
-            poll_kwargs['timeout'] = poll_timeout
-        
+        # Always pass resolved poll_timeout so poll_async uses the same value as sync update_raw
+        poll_kwargs = {**kwargs, 'timeout': poll_timeout}
+
         status, result = await self.poll_async(
             effective_id, request_id, verify_certificate, **poll_kwargs
         )
