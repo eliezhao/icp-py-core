@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-02-06
+
 ### Added
 
 - **Configurable query and update timeouts** ⏱️

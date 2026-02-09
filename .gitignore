@@ -19,5 +19,6 @@ dist/
 # Third-party libraries
 blst/
 
-# Release checklist
+# Release checklist / process (local only, for maintainers and AI)
 RELEASE_CHECKLIST.md
+RELEASE_PROCESS.md

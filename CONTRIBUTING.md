@@ -76,6 +76,34 @@ If you need to modify the Rust-based Candid parser:
    cargo build --release
    ```
 
+### Releasing a new version (main package + ic-candid-parser)
+
+When bumping icp-py-core's version you **must also bump** the Rust extension ic-candid-parser's version; otherwise the release workflow will still publish the old extension version.
+
+**Recommended steps:**
+
+1. **Bump both versions** (main package + extension in one go):
+   ```bash
+   ./scripts/bump_versions.sh <new_main_version> [extension_version]
+   ```
+   - Example: `./scripts/bump_versions.sh 2.3.0` → sets main to 2.3.0, extension patch+1 (e.g. 0.1.2 → 0.1.3), and updates main's dependency to `ic_candid_parser>=0.1.3`.
+   - To set extension explicitly: `./scripts/bump_versions.sh 2.3.0 0.1.5`.
+2. Update **CHANGELOG.md** (replace `[Unreleased]` with `[x.y.z] - date`).
+3. Commit, tag, and push to trigger the release:
+   ```bash
+   git add -A && git commit -m "chore: release v2.3.0" && git tag v2.3.0 && git push && git push --tags
+   ```
+   `.github/workflows/release.yml` will publish ic-candid-parser first, then icp-py-core.
+
+### Publishing ic-candid-parser to PyPI (maintainers)
+
+The Rust extension is published as a separate PyPI package **ic-candid-parser**; its version is read from `src/icp_candid/ic_candid_parser/Cargo.toml`.
+
+- **Publish extension only** (single-platform build + sdist): from the repo root run  
+  `./scripts/publish_ic_candid_parser.sh`  
+  Requires `maturin` and PyPI credentials (e.g. `TWINE_USERNAME` / `TWINE_PASSWORD`).
+- **Full multi-platform wheels (recommended)**: Use a GitHub Release. Pushing a tag (e.g. `v2.3.0`) triggers `.github/workflows/release.yml`, which builds multi-platform wheels and publishes ic-candid-parser first, then icp-py-core.
+
 ## Making Changes
 
 ### Branch Naming

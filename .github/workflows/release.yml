@@ -6,8 +6,37 @@ on:
       - 'v*' # Trigger only on tags (e.g., v0.1.0)
 
 jobs:
+  # Fail early if main or extension version was not bumped before tagging
+  version_check:
+    name: Version consistency check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check versions match tag and extension is in sync
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "Tag version: $TAG"
+          MAIN_VER=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
+          EXT_VER=$(sed -n 's/^version = "\(.*\)"$/\1/p' src/icp_candid/ic_candid_parser/Cargo.toml | head -1)
+          MAIN_DEPS=$(grep -o 'ic_candid_parser>=[^"]*' pyproject.toml || true)
+          echo "Main package version (pyproject.toml): $MAIN_VER"
+          echo "Extension version (Cargo.toml): $EXT_VER"
+          echo "Main dependency on extension: $MAIN_DEPS"
+          if [ "$MAIN_VER" != "$TAG" ]; then
+            echo "::error::Main package version '$MAIN_VER' does not match tag 'v$TAG'. Run: ./scripts/bump_versions.sh $TAG"
+            exit 1
+          fi
+          if ! echo "$MAIN_DEPS" | grep -q ">=${EXT_VER}"; then
+            echo "::error::pyproject.toml does not require ic_candid_parser>=${EXT_VER}. Run: ./scripts/bump_versions.sh $TAG"
+            exit 1
+          fi
+          echo "Version check passed."
+
   build_wheels_linux_windows:
     name: Build wheels on ${{ matrix.os }}
+    needs: [version_check]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -48,6 +77,7 @@ jobs:
 
   build_wheels_macos:
     name: Build wheels on macOS (${{ matrix.target }})
+    needs: [version_check]
     runs-on: macos-latest
     strategy:
       matrix:
@@ -85,6 +115,7 @@ jobs:
 
   # Build source distribution as fallback (for non-mainstream platforms that can compile from source)
   build_sdist:
+    needs: [version_check]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
