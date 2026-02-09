@@ -468,9 +468,6 @@ class Agent:
         root_key: Root public key for certificate verification (default: IC_ROOT_KEY).
         nonce_factory: Optional factory for generating nonces.
         verify_query_signatures: Whether to verify query response signatures (default: False).
-                                 Note: Standard IC query responses do not include signatures. Only
-                                 replica-signed queries include signatures. Enabling this will cause
-                                 standard queries to fail unless signatures are present.
         node_key_cache: Cache for node public keys.
     
     Example:
