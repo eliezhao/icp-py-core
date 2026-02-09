@@ -580,13 +580,13 @@ See [ROADMAP.md](./ROADMAP.md)
 ✅ **Milestone 2**: Certificate verification with `blst` (enabled by default)  
 ✅ **Milestone 3**: Candid type-system enhancements (Rust parser, DIDLoader, VarT support)  
 ✅ **Milestone 4**: Expanded API surface (Ledger, Governance, Cycles Wallet, Management), code optimization, HTTP/2 support, structured error handling  
-🔜 **Milestone 5**: Auto-fetch DID files, high-level async API methods (`update_async`, `query_async`), Canister async method support, replica-signed queries  
+✅ **Milestone 5**: Auto-fetch DID files, high-level async API methods (`update_async`, `query_async`), Canister async method support, replica-signed queries  
 
 ---
 
 ## 🔖 Version
 
-- Current release: **v2.2.0**
+- Current release: **v2.3.0**
 
 ---
 
