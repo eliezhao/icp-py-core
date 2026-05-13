@@ -24,15 +24,38 @@ CRC_LENGTH_IN_BYTES = 4
 # self-authenticating principal = sha224(SPKI_DER) || 0x02
 _SA_SUFFIX = 0x02
 
-# Known SPKI prefixes (hex) for strict validation
+# Known SPKI prefixes (hex) for validation.
+# The IC accepts any DER-encoded public key for self-authenticating principals
+# (Ed25519, ECDSA secp256k1, ECDSA P-256, BLS12-381). We validate a small
+# allowlist of well-known prefixes to catch obviously malformed input early,
+# but the algorithm itself is `sha224(DER) || 0x02` for any DER blob.
+
 # Ed25519 (RFC 8410): 302a300506032b6570032100 || 32-byte raw key
 _ED25519_SPKI_PREFIX_HEX = "302a300506032b6570032100"
 
 # secp256k1 (id-ecPublicKey + secp256k1): common SPKI header with BIT STRING to follow
 _SECP256K1_SPKI_PREFIX_HEX = "3056301006072a8648ce3d020106052b8104000a034200"
 
+# ECDSA P-256 / secp256r1 (RFC 5480): id-ecPublicKey + prime256v1 + uncompressed BIT STRING
+_P256_SPKI_PREFIX_HEX = "3059301306072a8648ce3d020106082a8648ce3d030107034200"
+
+# BLS12-381 G2 public key as used by IC subnet keys (DER-wrapped 96-byte compressed G2).
+# Defined in the IC interface spec; the same prefix appears in IC_ROOT_KEY.
+_BLS12_381_G2_SPKI_PREFIX_HEX = (
+    "308182301d060d2b0601040182dc7c0503010201060c2b0601040182dc7c05030201036100"
+)
+
 _ED25519_SPKI_PREFIX = bytes.fromhex(_ED25519_SPKI_PREFIX_HEX)
 _SECP256K1_SPKI_PREFIX = bytes.fromhex(_SECP256K1_SPKI_PREFIX_HEX)
+_P256_SPKI_PREFIX = bytes.fromhex(_P256_SPKI_PREFIX_HEX)
+_BLS12_381_G2_SPKI_PREFIX = bytes.fromhex(_BLS12_381_G2_SPKI_PREFIX_HEX)
+
+_KNOWN_SPKI_PREFIXES = (
+    _ED25519_SPKI_PREFIX,
+    _SECP256K1_SPKI_PREFIX,
+    _P256_SPKI_PREFIX,
+    _BLS12_381_G2_SPKI_PREFIX,
+)
 
 
 # -----------------------------
@@ -90,10 +113,18 @@ class Principal:
     @staticmethod
     def self_authenticating(spki_der: Union[bytes, bytearray, memoryview, str]) -> "Principal":
         """
-        Strict version: only accepts **SPKI DER** public key bytes (not raw 32/33/65 bytes).
-        - For Ed25519: must start with 302a300506032b6570032100 (RFC 8410).
-        - For secp256k1: must start with 3056301006072a8648ce3d020106052b8104000a034200.
-        Then: sha224(SPKI_DER) || 0x02 -> principal bytes.
+        Derive a self-authenticating Principal from a DER-encoded public key.
+
+        Per IC interface spec (section "Principal"):
+            principal = sha224(DER-encoded public key) || 0x02 (29 bytes)
+
+        The DER encoding is accepted for any supported scheme: Ed25519,
+        ECDSA secp256k1, ECDSA P-256, or BLS12-381 G2 (subnet keys).
+
+        The input must look like a SEQUENCE-wrapped SubjectPublicKeyInfo
+        (i.e. start with 0x30 and be at least 40 bytes). Well-known prefixes
+        are short-circuited; any other DER blob starting with 0x30 is also
+        accepted, since the IC does not restrict the inner key algorithm.
         """
         if isinstance(spki_der, str):
             try:
@@ -108,8 +139,11 @@ class Principal:
         if len(spki) < 40:
             raise ValueError("self_authenticating: SPKI DER too short")
 
-        if not (spki.startswith(_ED25519_SPKI_PREFIX) or spki.startswith(_SECP256K1_SPKI_PREFIX)):
-            raise ValueError("self_authenticating: not a recognized SPKI DER for Ed25519 or secp256k1")
+        # Accept any well-formed SubjectPublicKeyInfo (SEQUENCE-wrapped DER).
+        # We don't crack the DER open; the IC accepts whatever DER the client
+        # uses as long as the signature scheme is one of the supported ones.
+        if spki[0] != 0x30 and not any(spki.startswith(p) for p in _KNOWN_SPKI_PREFIXES):
+            raise ValueError("self_authenticating: input does not look like SPKI DER")
 
         digest = hashlib.sha224(spki).digest()
         return Principal(digest + bytes([PrincipalClass.SelfAuthenticating.value]))
@@ -118,7 +152,13 @@ class Principal:
 
     @staticmethod
     def from_str(s: str) -> "Principal":
-        """Parse textual principal (with groups and no padding) into bytes."""
+        """
+        Parse a textual principal (with dash groups, no base32 padding) into bytes.
+
+        Per IC spec, textual principals are parsed case-insensitively; the
+        canonical form is lowercase. We compare the round-trip against the
+        canonical lowercase form so that "AAAAA-AA" and "aaaaa-aa" both work.
+        """
         if not isinstance(s, str):
             raise TypeError("from_str expects a string")
         s1 = s.replace("-", "")
@@ -135,7 +175,9 @@ class Principal:
         if chk != (zlib.crc32(body) & 0xFFFFFFFF):
             raise ValueError("principal checksum mismatch")
         p = Principal(body)
-        if p.to_str() != s:
+        # Compare against canonical (lowercase) form so the parser is
+        # case-insensitive but still rejects wrong grouping / extra chars.
+        if p.to_str() != s.lower():
             raise ValueError("principal round-trip mismatch")
         return p
 

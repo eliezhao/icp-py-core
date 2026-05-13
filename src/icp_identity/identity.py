@@ -14,7 +14,7 @@ import unicodedata
 from typing import Optional, Tuple, List, Union
 
 import ecdsa
-from ecdsa.curves import Ed25519, SECP256k1
+from ecdsa.curves import Ed25519, SECP256k1, NIST256p
 from ecdsa import util as ecdsa_util
 
 from icp_principal import Principal
@@ -102,11 +102,22 @@ def _slip10_derive_ed25519(seed: bytes, path: str) -> bytes:
 
 class Identity:
     """
-    Ed25519 / secp256k1 identity for the Internet Computer.
-    - Self-authenticating Principal derives from the SPKI DER public key.
-    - Ed25519 signs the raw message (RFC 8032, no prehash).
-    - secp256k1 signs/verify with SHA-256 and 64-byte raw signatures (r||s) with canonical low-S.
+    Ed25519 / secp256k1 / P-256 identity for the Internet Computer.
+
+    Supported schemes (per IC interface spec):
+    - Ed25519 (RFC 8032): signs the raw message, no prehash.
+    - ECDSA secp256k1: signs SHA-256(message), 64-byte raw (r||s), canonical low-S.
+    - ECDSA P-256 (secp256r1, RFC 5480): same signing rules as secp256k1.
+
+    Self-authenticating Principal derives from the SPKI DER public key.
     """
+
+    _CURVE_BY_TYPE = {
+        "ed25519": Ed25519,
+        "secp256k1": SECP256k1,
+        "p256": NIST256p,
+        "secp256r1": NIST256p,  # alias
+    }
 
     def __init__(self, privkey: str = "", type: str = "ed25519", anonymous: bool = False) -> None:
         self.anonymous = bool(anonymous)
@@ -119,20 +130,21 @@ class Identity:
             self._der_pubkey = b""
             return
 
+        # Normalize type alias once so the rest of the class can switch on a single name.
+        if type == "secp256r1":
+            type = "p256"
         self.key_type = type
-        pk_bytes = bytes.fromhex(privkey) if privkey else None
 
-        if type == "secp256k1":
-            self.sk = ecdsa.SigningKey.from_string(pk_bytes, curve=SECP256k1) if pk_bytes else \
-                      ecdsa.SigningKey.generate(curve=SECP256k1)
-            self.vk = self.sk.get_verifying_key()
-
-        elif type == "ed25519":
-            self.sk = ecdsa.SigningKey.from_string(pk_bytes, curve=Ed25519) if pk_bytes else \
-                      ecdsa.SigningKey.generate(curve=Ed25519)
-            self.vk = self.sk.get_verifying_key()
-        else:
+        curve = self._CURVE_BY_TYPE.get(type)
+        if curve is None:
             raise ValueError("Unsupported identity type: " + type)
+
+        pk_bytes = bytes.fromhex(privkey) if privkey else None
+        self.sk = (
+            ecdsa.SigningKey.from_string(pk_bytes, curve=curve) if pk_bytes
+            else ecdsa.SigningKey.generate(curve=curve)
+        )
+        self.vk = self.sk.get_verifying_key()
 
         # Raw hex keys (not DER)
         self._privkey = self.sk.to_string().hex()
@@ -169,6 +181,8 @@ class Identity:
             typ = "ed25519"
         elif curve == SECP256k1:
             typ = "secp256k1"
+        elif curve == NIST256p:
+            typ = "p256"
         else:
             raise ValueError("Unsupported PEM curve")
         return Identity(privkey=key.to_string().hex(), type=typ)
@@ -192,8 +206,9 @@ class Identity:
     def sign(self, msg: bytes) -> Tuple[Optional[bytes], Optional[bytes]]:
         """
         Returns (der_pubkey, signature).
-          - Ed25519: 64-byte signature over raw message.
-          - secp256k1: 64-byte raw ECDSA signature (r||s) over SHA-256(message), canonical low-S.
+          - Ed25519: 64-byte signature over raw message (RFC 8032).
+          - secp256k1 / p256: 64-byte raw ECDSA signature (r||s) over SHA-256(message),
+            canonical low-S.
         """
         if self.anonymous:
             return (None, None)
@@ -202,7 +217,7 @@ class Identity:
             sig = self.sk.sign(msg)  # RFC 8032: no prehash
             return (self._der_pubkey, sig)
 
-        if self.key_type == "secp256k1":
+        if self.key_type in ("secp256k1", "p256"):
             sig = self.sk.sign(
                 msg,
                 hashfunc=hashlib.sha256,
@@ -216,7 +231,7 @@ class Identity:
         """
         Local verification helper:
           - Ed25519: raw signature over raw message.
-          - secp256k1: 64-byte raw signature (r||s) over SHA-256(message).
+          - secp256k1 / p256: 64-byte raw signature (r||s) over SHA-256(message).
         """
         if isinstance(msg, str):
             msg = bytes.fromhex(msg)
@@ -226,7 +241,7 @@ class Identity:
         try:
             if self.key_type == "ed25519":
                 return self.vk.verify(sig, msg)
-            if self.key_type == "secp256k1":
+            if self.key_type in ("secp256k1", "p256"):
                 return self.vk.verify(
                     sig, msg, hashfunc=hashlib.sha256, sigdecode=ecdsa_util.sigdecode_string
                 )

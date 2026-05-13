@@ -258,24 +258,27 @@ class Client:
             except httpx.RequestError as e:
                 raise TransportError(endpoint, e) from e
 
-    async def call_async(self, canister_id: str, req_id: bytes, data: bytes, *, timeout: Timeout = DEFAULT_TIMEOUT) -> bytes:
+    async def call_async(self, canister_id: str, req_id: bytes, data: bytes, *, timeout: Timeout = DEFAULT_TIMEOUT) -> httpx.Response:
         """
         Send an update call to a canister asynchronously (state-changing, requires consensus).
-        
+
         This is the async version of `call()`. See `call()` for details.
-        
+
         Args:
             canister_id: The canister ID to call.
-            req_id: The request ID (returned for consistency with sync version).
+            req_id: The request ID (kept in the signature for backwards-compatibility;
+                callers usually already have it from sign_request).
             data: CBOR-encoded request data.
             timeout: Optional timeout for the request. Defaults to DEFAULT_TIMEOUT.
-        
+
         Returns:
-            The request ID (same as req_id parameter).
-        
+            The httpx.Response so the caller can inspect status_code and parse
+            the v4 synchronous CBOR body (status=replied/accepted/etc.) when
+            the boundary node returns the result immediately.
+
         Raises:
             TransportError: If the HTTP request fails or returns an error status code.
-        
+
         Note:
             HTTP/2 is enabled for improved performance when supported by the boundary node.
             Uses the v4 API endpoint: `/api/v4/canister/<canister_id>/call` (supports canister migrations)
@@ -286,7 +289,7 @@ class Client:
             try:
                 resp = await client.post(endpoint, content=data, headers=headers)
                 resp.raise_for_status()  # Check HTTP status code
-                return req_id
+                return resp
             except httpx.HTTPStatusError as e:
                 raise TransportError(endpoint, e) from e
             except httpx.RequestError as e:

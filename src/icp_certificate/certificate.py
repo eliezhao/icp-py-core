@@ -209,12 +209,21 @@ class Certificate:
 
     def lookup_reject_code(
         self, request_id: Union[bytes, bytearray, memoryview, str]
-    ) -> Optional[str]:
+    ) -> Optional[int]:
+        """
+        Look up the reject_code at /request_status/<id>/reject_code.
+
+        Per IC interface spec, reject_code is a natural number stored
+        as Unsigned LEB128. Decode accordingly.
+        """
         path = [b"request_status", self._to_bytes(request_id), b"reject_code"]
         value = self.lookup(path)
         if value is None:
             return None
-        return bytes(value).decode("utf-8", "replace")
+        try:
+            return LEB128.decode_u_bytes(bytes(value))
+        except Exception as e:
+            raise ValueError("Invalid reject_code encoding (expected ULEB128)") from e
 
     def lookup_reject_message(
         self, request_id: Union[bytes, bytearray, memoryview, str]
@@ -236,7 +245,12 @@ class Certificate:
 
     def lookup_request_rejection(
         self, request_id: Union[bytes, bytearray, memoryview, str]
-    ) -> Dict[str, Optional[str]]:
+    ) -> Dict[str, Any]:
+        """
+        Resolve all rejection fields for a request_id.
+
+        reject_code is a nat (int); reject_message and error_code are text (str).
+        """
         return {
             "reject_code": self.lookup_reject_code(request_id),
             "reject_message": self.lookup_reject_message(request_id),

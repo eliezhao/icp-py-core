@@ -45,7 +45,6 @@ from icp_core.errors import (
     TimeoutWaitingForResponse,
     QuerySignatureVerificationFailed,
     MissingSignature,
-    TooManySignatures,
     CertificateOutdated,
     CertificateNotAuthorized,
     DerKeyLengthMismatch,
@@ -193,11 +192,19 @@ def to_request_id(d: dict) -> bytes:
         elif isinstance(v, list):
             # Use encode_list for lists
             h_v = hashlib.sha256(encode_list(v)).digest()
+        elif isinstance(v, bool):
+            # bool is a subclass of int in Python; handle before the int branch.
+            # The IC interface spec doesn't put bools in the request envelope today,
+            # but encode defensively as a single LEB128 byte.
+            h_v = hashlib.sha256(LEB128.encode_u(1 if v else 0)).digest()
         elif isinstance(v, int):
-            # Spec: natural numbers use Unsigned LEB128, integers use Signed LEB128.
-            # Request content only has nats (e.g. ingress_expiry); Signed LEB128
-            # matches ULEB128 for non-negative values, so use encode_i for full compliance.
-            h_v = hashlib.sha256(LEB128.encode_i(v)).digest()
+            # Per IC spec, natural numbers are hashed as Unsigned LEB128 (shortest form).
+            # Request envelope fields are all nats (ingress_expiry, nonce-as-int, etc.);
+            # negative ints are not used in any spec-defined request field.
+            if v < 0:
+                h_v = hashlib.sha256(LEB128.encode_i(v)).digest()
+            else:
+                h_v = hashlib.sha256(LEB128.encode_u(v)).digest()
         elif isinstance(v, (bytes, bytearray, memoryview)):
             # Hash bytes directly
             h_v = hashlib.sha256(bytes(v)).digest()
@@ -386,8 +393,13 @@ def encode_list(l: list) -> bytes:
     for item in l:
         if isinstance(item, list):
             v = encode_list(item)
+        elif isinstance(item, bool):
+            # Match to_request_id: encode bool as a single ULEB128 byte.
+            v = LEB128.encode_u(1 if item else 0)
         elif isinstance(item, int):
-            v = LEB128.encode_i(item)
+            # Natural numbers use ULEB128 per IC spec. Allow signed encoding
+            # only for negative values (not used in spec-defined request lists).
+            v = LEB128.encode_u(item) if item >= 0 else LEB128.encode_i(item)
         elif isinstance(item, (bytes, bytearray, memoryview)):
             v = bytes(item)
         elif isinstance(item, str):
@@ -655,7 +667,6 @@ class Agent:
         
         Raises:
             MissingSignature: If response has no signatures.
-            TooManySignatures: If signature count exceeds node count.
             CertificateOutdated: If signature timestamp is outdated.
             CertificateNotAuthorized: If node is not authorized.
             QuerySignatureVerificationFailed: If signature verification fails.
@@ -666,13 +677,11 @@ class Agent:
         
         # Get subnet information
         subnet_id, _ = self._get_subnet_by_canister(effective_canister_id)
-        
-        # Check signature count
-        # Note: We don't know the exact node count without fetching all nodes,
-        # so we'll verify each signature individually and allow any valid signature
-        if len(signatures) > 100:  # Reasonable upper limit
-            raise TooManySignatures(had=len(signatures), needed=100)
-        
+
+        # The IC spec does not impose a fixed upper bound on the signature
+        # count; subnets can be arbitrarily large. We verify each signature
+        # individually and require at least one to pass.
+
         # Verify each signature
         verified = False
         for sig_obj in signatures:
@@ -772,7 +781,6 @@ class Agent:
         
         Raises:
             MissingSignature: If response has no signatures.
-            TooManySignatures: If signature count exceeds node count.
             CertificateOutdated: If signature timestamp is outdated.
             CertificateNotAuthorized: If node is not authorized.
             QuerySignatureVerificationFailed: If signature verification fails.
@@ -783,11 +791,11 @@ class Agent:
         
         # Get subnet information
         subnet_id, _ = await self._get_subnet_by_canister_async(effective_canister_id)
-        
-        # Check signature count
-        if len(signatures) > 100:  # Reasonable upper limit
-            raise TooManySignatures(had=len(signatures), needed=100)
-        
+
+        # The IC spec does not impose a fixed upper bound on the signature
+        # count; subnets can be arbitrarily large. We verify each signature
+        # individually and require at least one to pass.
+
         # Verify each signature
         verified = False
         for sig_obj in signatures:
@@ -939,8 +947,12 @@ class Agent:
         return self.client.call(canister_id, data)
 
     async def call_endpoint_async(self, canister_id, request_id, data):
-        await self.client.call_async(canister_id, request_id, data)
-        return request_id
+        """
+        Issue an async v4 /call and return the raw httpx.Response so the
+        caller can mirror the sync update_raw fast-path (parse a synchronous
+        CBOR body when the replica returned the result inline).
+        """
+        return await self.client.call_async(canister_id, request_id, data)
 
     def read_state_endpoint(self, canister_id, data):
         return self.client.read_state(canister_id, data)
@@ -1435,7 +1447,12 @@ class Agent:
         """
         # Use default timeout if not provided
         poll_timeout = timeout if timeout is not None else DEFAULT_POLL_TIMEOUT_SECS
-        
+
+        # Extract backoff knobs (mirror sync update_raw signature).
+        initial_delay = kwargs.pop("initial_delay", DEFAULT_INITIAL_DELAY)
+        max_interval = kwargs.pop("max_interval", DEFAULT_MAX_INTERVAL)
+        multiplier = kwargs.pop("multiplier", DEFAULT_MULTIPLIER)
+
         req = {
             "request_type": "call",
             "sender": self.identity.sender().bytes,
@@ -1450,34 +1467,118 @@ class Agent:
         request_id, signed_cbor = sign_request(req, self.identity)
         effective_id = canister_id if effective_canister_id is None else effective_canister_id
 
-        _ = await self.call_endpoint_async(effective_id, request_id, signed_cbor)
-
-        # Always pass resolved poll_timeout so poll_async uses the same value as sync update_raw
-        poll_kwargs = {**kwargs, 'timeout': poll_timeout}
-
-        status, result = await self.poll_async(
-            effective_id, request_id, verify_certificate, **poll_kwargs
+        http_response: httpx.Response = await self.call_endpoint_async(
+            effective_id, request_id, signed_cbor
         )
+        try:
+            response_obj = cbor2.loads(http_response.content)
+        except Exception:
+            response_obj = None
 
+        if not isinstance(response_obj, Mapping) or "status" not in response_obj:
+            # v4 /call returned a non-CBOR/incomplete body. If HTTP 202 the
+            # call was accepted but not yet complete; fall back to polling.
+            # Otherwise surface the real error.
+            if http_response.status_code == 202:
+                status, result = await self.poll_async(
+                    effective_id, request_id, verify_certificate,
+                    timeout=poll_timeout,
+                    initial_delay=initial_delay,
+                    max_interval=max_interval,
+                    multiplier=multiplier,
+                )
+                return self._finalize_update_result(status, result, return_type, request_id)
+            raise RuntimeError(
+                f"v4 /call returned HTTP {http_response.status_code} "
+                f"with non-CBOR body: {http_response.content[:200]!r}"
+            )
+
+        status = response_obj.get("status")
+
+        if status == "replied":
+            cbor_certificate = response_obj["certificate"]
+            decoded_certificate = cbor2.loads(cbor_certificate)
+            certificate = Certificate(decoded_certificate)
+
+            if verify_certificate:
+                certificate.assert_certificate_valid(effective_id)
+                certificate.verify_cert_timestamp(self.ingress_expiry * NANOSECONDS)
+
+            certified_status = certificate.lookup_request_status(request_id)
+            if isinstance(certified_status, (bytes, bytearray, memoryview)):
+                certified_status = bytes(certified_status).decode("utf-8", "replace")
+
+            if certified_status == "replied":
+                reply_data = certificate.lookup_reply(request_id)
+                if reply_data is None:
+                    raise RuntimeError(
+                        f"Certificate lookup failed: reply data not found for request {request_id.hex()}"
+                    )
+                return decode(reply_data, return_type)
+            elif certified_status == "rejected":
+                rejection = certificate.lookup_request_rejection(request_id)
+                reject_code = rejection.get("reject_code")
+                if not isinstance(reject_code, int):
+                    reject_code = 0
+                reject_message = _safe_str(rejection.get("reject_message")) or "Unknown rejection"
+                error_code = _safe_str(rejection.get("error_code"))
+                raise ReplicaReject(reject_code, reject_message, error_code)
+            else:
+                # Not yet terminal in certification; continue polling.
+                status_str, result = await self.poll_async(
+                    effective_id, request_id, verify_certificate,
+                    timeout=poll_timeout,
+                    initial_delay=initial_delay,
+                    max_interval=max_interval,
+                    multiplier=multiplier,
+                )
+                return self._finalize_update_result(status_str, result, return_type, request_id)
+
+        elif status == "accepted":
+            # Not yet executed; start polling.
+            status_str, result = await self.poll_async(
+                effective_id, request_id, verify_certificate,
+                timeout=poll_timeout,
+                initial_delay=initial_delay,
+                max_interval=max_interval,
+                multiplier=multiplier,
+            )
+            return self._finalize_update_result(status_str, result, return_type, request_id)
+
+        elif status == "non_replicated_rejection":
+            code = response_obj.get("reject_code", 0)
+            if isinstance(code, bytes):
+                code = int.from_bytes(code, "big")
+            elif not isinstance(code, int):
+                code = 0
+            message = _safe_str(response_obj.get("reject_message")) or "Unknown rejection"
+            error = _safe_str(response_obj.get("error_code"))
+            raise ReplicaReject(code, message, error)
+
+        else:
+            raise RuntimeError(f"Unknown status: {status}")
+
+    def _finalize_update_result(self, status, result, return_type, request_id):
+        """
+        Translate (status, result) from poll/poll_async into a return value
+        or raised exception, matching the sync/async update_raw contract.
+        """
         if status == "rejected":
-            # result is a dict with rejection fields
             code = result.get("reject_code", 0)
             if isinstance(code, bytes):
-                code = int.from_bytes(code, 'big')
+                code = int.from_bytes(code, "big")
             elif not isinstance(code, int):
                 code = 0
             message = _safe_str(result.get("reject_message")) or "Unknown rejection"
             error = _safe_str(result.get("error_code"))
             raise ReplicaReject(code, message, error)
 
-        elif status == "replied":
-            # result is raw reply bytes
+        if status == "replied":
             if result[:4] == b"DIDL":
                 return decode(result, return_type)
             return result
 
-        else:
-            raise RuntimeError("Timeout to poll result, current status: " + str(status))
+        raise RuntimeError("Timeout to poll result, current status: " + str(status))
 
     # ----------- Read state -----------
 

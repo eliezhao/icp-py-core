@@ -86,11 +86,18 @@ class TestVerifyQueryResponseSignaturesMissingSignature:
             agent._verify_query_response_signatures(result, request_id, CANISTER_ID)
 
 
-class TestVerifyQueryResponseSignaturesTooManySignatures:
-    """Test that _verify_query_response_signatures raises TooManySignatures when signature count > 100."""
+class TestVerifyQueryResponseSignaturesNoArbitraryCap:
+    """
+    The IC interface spec does not impose a fixed upper bound on the number
+    of query-response signatures; subnets can be arbitrarily large. The
+    previous implementation rejected anything > 100 with TooManySignatures,
+    which is a spec deviation. After the fix, large signature lists are
+    iterated normally and yield QuerySignatureVerificationFailed only when
+    none of the signatures verify.
+    """
 
-    def test_more_than_100_signatures_raises_too_many(self, agent):
-        """Result with 101 signatures raises TooManySignatures(had=101, needed=100)."""
+    def test_more_than_100_signatures_does_not_raise_too_many(self, agent):
+        """101 (invalid) signatures must NOT short-circuit with TooManySignatures."""
         sig = {"identity": "aaaaa-aa", "signature": b"\x00" * 64, "timestamp": 1_000_000_000_000}
         result = {
             "status": "replied",
@@ -98,10 +105,12 @@ class TestVerifyQueryResponseSignaturesTooManySignatures:
             "signatures": [sig] * 101,
         }
         request_id = b"\x00\x01\x02\x03"
-        with pytest.raises(TooManySignatures) as exc_info:
+        # The signatures are all garbage, so we still expect a verification
+        # failure — but it must be QuerySignatureVerificationFailed (because
+        # we walked the whole list), NOT TooManySignatures (which would mean
+        # the cap fired before any verification was attempted).
+        with pytest.raises(QuerySignatureVerificationFailed):
             agent._verify_query_response_signatures(result, request_id, CANISTER_ID)
-        assert exc_info.value.had == 101
-        assert exc_info.value.needed == 100
 
 
 class TestQueryRawWithVerifyQuerySignatures:

@@ -945,11 +945,16 @@ class FuncClass(ConstructType):
 
     def name(self): return "func"
 
-    def covariant(self, x): return isinstance(x, (list, tuple)) and len(x) == 2
-
-    
+    def covariant(self, x):
+        # None encodes as an opaque reference per Candid spec.
+        if x is None:
+            return True
+        return isinstance(x, (list, tuple)) and len(x) == 2
 
     def encodeValue(self, val):
+        # Opaque function reference: encoded as a single 0x00 byte per Candid spec.
+        if val is None:
+            return b"\x00"
 
         p, m = val
 
@@ -959,11 +964,7 @@ class FuncClass(ConstructType):
 
         p = p or b""
 
-        # [FIX] Func = Service(0x01) + Principal + Text.
-
-        # PrincipalClass.encodeValue adds (0x01 + len + bytes).
-
-        # We must add the leading 0x01 for the Service tag.
+        # Func value = 0x01 (present) + service(0x01 + principal) + text(len + utf8).
 
         svc_part = b"\x01" + PrincipalClass().encodeValue(p)
 
@@ -981,12 +982,23 @@ class FuncClass(ConstructType):
 
         for r in self.rets: r.buildTypeTable(typeTable)
 
+        # Per Candid spec: query=0x01, oneway=0x02, composite_query=0x03.
+        _MODE_BYTES = {"query": b"\x01", "oneway": b"\x02", "composite_query": b"\x03"}
+        mode_bytes = b""
+        for m in self.modes:
+            if m not in _MODE_BYTES:
+                raise ValueError(
+                    f"Unknown func mode {m!r}; expected one of "
+                    "'query', 'oneway', 'composite_query'"
+                )
+            mode_bytes += _MODE_BYTES[m]
+
         buf = (LEB128.encode_i(TypeIds.Func.value) + LEB128.encode_u(len(self.args)) +
                b"".join(a.encodeType(typeTable) for a in self.args) +
                LEB128.encode_u(len(self.rets)) +
                b"".join(r.encodeType(typeTable) for r in self.rets) +
                LEB128.encode_u(len(self.modes)) +
-               b"".join((b"\x01" if m == "query" else (b"\x02" if m == "oneway" else b"\x03")) for m in self.modes))
+               mode_bytes)
 
         typeTable.update(self, buf)
 
@@ -994,9 +1006,16 @@ class FuncClass(ConstructType):
 
         self.checkType(t)
 
-        if b.read_byte() != 1: raise ValueError("Func missing service flag")
+        flag = b.read_byte()
 
-        # [FIX] Delegate to PrincipalClass to safely consume (0x01 + len + bytes)
+        # 0x00 means an opaque (null) function reference.
+        if flag == 0:
+            return None
+
+        if flag != 1:
+            raise ValueError(f"Func reference flag must be 0x00 or 0x01, got {flag:#x}")
+
+        # Delegate to PrincipalClass to safely consume (0x01 + len + bytes)
 
         p = PrincipalClass().decodeValue(b, Types.Principal)
 
@@ -1012,11 +1031,16 @@ class ServiceClass(ConstructType):
 
     def name(self): return "service"
 
-    def covariant(self, x): return True
-
-    
+    def covariant(self, x):
+        # None encodes as an opaque service reference per Candid spec.
+        if x is None:
+            return True
+        return True
 
     def encodeValue(self, val):
+        # Opaque service reference: encoded as a single 0x00 byte per Candid spec.
+        if val is None:
+            return b"\x00"
 
         if hasattr(val, 'bytes'): val = val.bytes
 
@@ -1024,15 +1048,10 @@ class ServiceClass(ConstructType):
 
         val = val or b""
 
-        # [FIXED] Service IS a Principal on the wire.
-
-        # Do NOT add an extra \x01 prefix here.
-
-        # PrincipalClass.encodeValue already adds the required 0x01 reference tag.
+        # Service IS a Principal on the wire. PrincipalClass.encodeValue
+        # already adds the required 0x01 reference tag.
 
         return PrincipalClass().encodeValue(val)
-
-    
 
     def _buildTypeTableImpl(self, typeTable: TypeTable):
 
@@ -1054,13 +1073,16 @@ class ServiceClass(ConstructType):
 
         self.checkType(t)
 
-        # [FIXED] Service encoding is identical to Principal.
+        # Peek the reference flag: 0x00 = opaque/null, 0x01 = present principal.
+        flag = b.read_byte()
+        if flag == 0:
+            return None
+        if flag != 1:
+            raise ValueError(f"Service reference flag must be 0x00 or 0x01, got {flag:#x}")
 
-        # Do NOT check for an extra \x01 byte here.
-
-        # PrincipalClass.decodeValue will consume the 0x01 reference tag.
-
-        return PrincipalClass().decodeValue(b, Types.Principal)
+        length = LEB128.decode_u(b)
+        raw = b.read(length)
+        return P.management_canister() if len(raw) == 0 else P.from_hex(raw.hex())
 
 
 
@@ -1120,7 +1142,10 @@ def decode(data: bytes, retTypes=None):
                 if byte_val == 1: return "query"
                 if byte_val == 2: return "oneway"
                 if byte_val == 3: return "composite_query"
-                return "oneway"  # fallback for unknown
+                raise ValueError(
+                    f"Unknown func mode byte {byte_val:#x}; expected 0x01 (query), "
+                    "0x02 (oneway), or 0x03 (composite_query)"
+                )
             modes = [_decode_mode(b.read_byte()) for _ in range(LEB128.decode_u(b))]
 
             t = Types.Func(args, rets, modes)
