@@ -23,6 +23,7 @@ Key Features:
 from __future__ import annotations
 
 from typing import Optional, Union, Any, Dict, List, Tuple
+from collections.abc import Mapping
 import hashlib
 import time
 import asyncio
@@ -675,7 +676,7 @@ class Agent:
         # Verify each signature
         verified = False
         for sig_obj in signatures:
-            if not isinstance(sig_obj, dict):
+            if not isinstance(sig_obj, Mapping):
                 continue
             
             node_identity_raw = sig_obj.get("identity")
@@ -790,7 +791,7 @@ class Agent:
         # Verify each signature
         verified = False
         for sig_obj in signatures:
-            if not isinstance(sig_obj, dict):
+            if not isinstance(sig_obj, Mapping):
                 continue
             
             node_identity_raw = sig_obj.get("identity")
@@ -1161,7 +1162,7 @@ class Agent:
         target_canister = canister_id if effective_canister_id is None else effective_canister_id
         result = self.query_endpoint(target_canister, signed_cbor, timeout=timeout)
 
-        if not isinstance(result, dict) or "status" not in result:
+        if not isinstance(result, Mapping) or "status" not in result:
             raise RuntimeError("Malformed result: " + repr(result))
 
         # Determine if we should verify signatures
@@ -1233,7 +1234,7 @@ class Agent:
         target_canister = canister_id if effective_canister_id is None else effective_canister_id
         result = await self.query_endpoint_async(target_canister, signed_cbor, timeout=timeout)
 
-        if not isinstance(result, dict) or "status" not in result:
+        if not isinstance(result, Mapping) or "status" not in result:
             raise RuntimeError("Malformed result: " + repr(result))
 
         # Determine if we should verify signatures
@@ -1319,7 +1320,7 @@ class Agent:
         except Exception:
             response_obj = None
 
-        if not isinstance(response_obj, dict) or "status" not in response_obj:
+        if not isinstance(response_obj, Mapping) or "status" not in response_obj:
             # The v4 /call endpoint may return a non-CBOR or incomplete response
             # when the canister takes too long for a synchronous reply.
             if http_response.status_code == 202:
