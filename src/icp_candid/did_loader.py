@@ -24,6 +24,22 @@ except ImportError:
 
 from .candid import Types
 
+
+# Map from non-standard mode tokens (produced by older ic_candid_parser
+# wheels that used Debug formatting) to the canonical Candid mode names
+# used by the encoder/decoder. The Rust extension was fixed to emit the
+# canonical forms, but PyPI wheels installed before the fix still produce
+# the squashed lowercase variants — normalize here so both work.
+_MODE_ALIASES = {
+    "compositequery": "composite_query",
+}
+
+
+def _normalize_modes(modes):
+    """Canonicalize Candid func mode tokens; pass through unknown values."""
+    return [_MODE_ALIASES.get(m, m) for m in modes]
+
+
 class DIDLoader:
 
     def __init__(self):
@@ -97,7 +113,7 @@ class DIDLoader:
 
                 [self._parse_json_type(t) for t in m['rets']],
 
-                m['modes']
+                _normalize_modes(m['modes'])
 
             )
 
@@ -119,7 +135,7 @@ class DIDLoader:
 
                             [self._parse_json_type(t) for t in m.get('rets', [])],
 
-                            m.get('modes') or []
+                            _normalize_modes(m.get('modes') or [])
 
                         )
 
@@ -214,7 +230,7 @@ class DIDLoader:
 
                  [self._parse_json_type(x) for x in val['rets']],
 
-                 val['modes']
+                 _normalize_modes(val['modes'])
 
              )
 

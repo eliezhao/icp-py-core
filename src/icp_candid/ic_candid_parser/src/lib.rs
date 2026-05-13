@@ -8,6 +8,7 @@ use candid_parser::syntax::Binding;
 use pyo3::prelude::*;
 use candid_parser::{IDLProg};
 use candid_parser::syntax::{Dec, IDLType};
+use candid::types::FuncMode;
 use serde::Serialize;
 
 // --- 1. Define intermediate JSON protocol ---
@@ -54,14 +55,25 @@ enum JsonType {
     Opt(Box<JsonType>),
     // Use Vec<(String, JsonType)> to serialize as [["key", type], ...]
     // This matches Python loader's expectation for array format
-    Record(Vec<(String, JsonType)>), 
+    Record(Vec<(String, JsonType)>),
     Variant(Vec<(String, JsonType)>),
     Func { args: Vec<JsonType>, rets: Vec<JsonType>, modes: Vec<String> },
     Service(Vec<MethodEntry>),
     Id(String),                      // Reference to other type (type A = B)
-    Empty(()),                       // Unit tuple to ensure "value" field (null)
-    Reserved(()),                    // Unit tuple to ensure "value" field (null)
-    Unknown(()),                     // Unit tuple to ensure "value" field (null)
+}
+
+/// Convert a Candid FuncMode to the canonical textual token used by the
+/// Python encoder ("query", "oneway", "composite_query"). Previously we
+/// used `format!("{:?}", m).to_lowercase()`, which produced
+/// "compositequery" (no underscore) and broke round-tripping of any DID
+/// file that declares a composite_query method.
+fn mode_to_string(m: &FuncMode) -> String {
+    match m {
+        FuncMode::Oneway => "oneway",
+        FuncMode::Query => "query",
+        FuncMode::CompositeQuery => "composite_query",
+    }
+    .to_string()
 }
 
 // --- 2. Conversion logic: Candid AST -> JSON ---
@@ -95,7 +107,7 @@ fn convert_type(t: &IDLType) -> JsonType {
         IDLType::FuncT(func) => {
             let args = func.args.iter().map(convert_type).collect();
             let rets = func.rets.iter().map(convert_type).collect();
-            let modes = func.modes.iter().map(|m| format!("{:?}", m).to_lowercase()).collect();
+            let modes = func.modes.iter().map(mode_to_string).collect();
             JsonType::Func { args, rets, modes }
         },
         IDLType::ServT(methods) => {
@@ -112,7 +124,7 @@ fn convert_method(m: &Binding) -> MethodEntry {
             name: m.id.clone(),
             args: func.args.iter().map(convert_type).collect(),
             rets: func.rets.iter().map(convert_type).collect(),
-            modes: func.modes.iter().map(|mode| format!("{:?}", mode).to_lowercase()).collect(),
+            modes: func.modes.iter().map(mode_to_string).collect(),
         }
     } else {
         // Theoretically Service fields must be Func, this is defensive code
@@ -158,11 +170,30 @@ fn parse_did(did_content: String) -> PyResult<String> {
     // Convert data
     let mut env_list = Vec::new();
     for dec in &prog.decs {
-        if let Dec::TypD(binding) = dec {
-            env_list.push(DefEntry {
+        match dec {
+            Dec::TypD(binding) => env_list.push(DefEntry {
                 name: binding.id.clone(),
                 datatype: convert_type(&binding.typ),
-            });
+            }),
+            // `import "path"` (ImportType) and `import service "path"`
+            // (ImportServ) are recognized by the upstream candid_parser but
+            // cannot be resolved here — we don't read files. The Python
+            // loader's Id() lookups would silently resolve any referenced
+            // external types to empty Rec() placeholders, which is much
+            // worse than a clear error.
+            //
+            // The Candid spec allows imports; this binding intentionally
+            // narrows scope: callers must inline their imports (e.g. with
+            // `didc bind --inline`) before passing the source here.
+            Dec::ImportType(path) | Dec::ImportServ(path) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    format!(
+                        "import directives are not supported (saw `import {:?}`). \
+                         Inline imports into a single .did source first.",
+                        path
+                    ),
+                ));
+            }
         }
     }
 

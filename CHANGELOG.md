@@ -2,6 +2,73 @@
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-05-13
+
+This is a spec-compliance bugfix release. No public API changes; existing
+code continues to work. Several silent or latent deviations from the IC
+interface spec and the Candid reference have been corrected.
+
+### Fixed
+
+- **`reject_code` is now decoded as a natural number** (per IC spec
+  `/request_status/<id>/reject_code` is a nat, not text). The previous
+  implementation UTF-8-decoded the LEB128 leaf, which made
+  `poll_and_wait` report `reject_code = 0` for every certificate-based
+  rejection (sync polling fallback, async, `request_status_raw`).
+- **`to_request_id` now hashes natural numbers with Unsigned LEB128** as
+  required by the IC interface spec. The previous implementation used
+  Signed LEB128 with a misleading "matches ULEB for non-negative values"
+  comment; the two encodings diverge whenever the top 7-bit chunk has
+  its MSB set (e.g. 64, 8192, 1<<62, …). Latent bug for current ingress
+  values; corrected before it can bite.
+- **`Principal.self_authenticating` accepts any well-formed SPKI DER**.
+  Previously it whitelisted only Ed25519 and secp256k1 prefixes,
+  rejecting valid BLS subnet keys (including `IC_ROOT_KEY`) and P-256
+  WebAuthn keys. The IC spec defines self-authenticating principal
+  derivation as `sha224(DER) || 0x02` for any DER blob.
+- **`update_raw_async` now uses the v4 synchronous `/call` response**
+  (matching `update_raw`'s fast path) instead of always polling.
+  `Client.call_async` returns the full `httpx.Response`.
+- **`Principal.from_str` is now case-insensitive** per spec
+  ("parsed case-insensitively"). Uppercase or mixed-case textual
+  principals are accepted.
+- **`cbor2 6.x` (frozendict)** compatibility — see issue #14.
+
+### Added
+
+- **ECDSA P-256 (secp256r1) identity support** in `Identity`, in
+  addition to Ed25519 and secp256k1. Use `Identity(type="p256")` or
+  the alias `"secp256r1"`. The principal SPKI prefix list also
+  recognizes P-256 SPKI.
+- **Candid opaque (`None`) func / service references** are now encoded
+  as `0x00` per Candid spec; decoders accept `0x00` as well as `0x01`.
+
+### Changed
+
+- **Arbitrary `> 100` cap on query-response signature count removed**;
+  the IC spec does not impose a fixed bound. Verification iterates the
+  whole list and requires at least one valid signature.
+- **Candid `func` mode encoder now raises on unknown modes** instead of
+  silently fabricating `composite_query` (`0x03`). Decoder behavior is
+  symmetric.
+- **`Principal.self_authenticating` SPKI validation** is now structural
+  (`0x30` SEQUENCE prefix) rather than a closed allow-list of known key
+  types.
+
+### Internal
+
+- `ic_candid_parser` bumped to **0.2.1**:
+  - `composite_query` is now serialized with its canonical underscored
+    name (the previous `format!("{:?}", _).to_lowercase()` produced
+    `"compositequery"`, which broke Candid round-tripping after the
+    encoder gained strict mode validation in this release).
+  - `import` / `import service` directives now raise a clear
+    `ValueError` instead of being silently dropped. Inline imports
+    before parsing.
+- `did_loader.py` defensively normalizes `"compositequery"` →
+  `"composite_query"` so end users on older pre-fix wheels still work.
+- `icp-py-core` now depends on `ic_candid_parser >= 0.2.1`.
+
 ## [2.3.0] - 2026-02-06
 
 ### Added
