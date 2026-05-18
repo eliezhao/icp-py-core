@@ -12,6 +12,15 @@
 
 ---
 
+> ## 📣 Join the Discussion — Features, Issues & Contributions Welcome!
+>
+> 💬 Have a new feature idea or found an issue with `icp-py-core`?
+> Join the conversation on the 👉 **[DFINITY Developer Forum](https://forum.dfinity.org/t/ic-py-development-and-ongoing-maintenance/47455)**.
+>
+> 🙌 **Contributions from anyone are warmly welcomed** — bug reports, pull requests, design discussions, and feedback all help move the project forward.
+
+---
+
 ## 📖 About This Project
 
 **ICP-PY-CORE** is a maintained and extended fork of [ic-py](https://github.com/rocklabs-io/ic-py).  
@@ -31,6 +40,7 @@ This version introduces a modular architecture, protocol upgrades, and new APIs 
 
 ### 🤝 Community & Contribution
 
+- 💬 **[DFINITY Forum Thread](https://forum.dfinity.org/t/ic-py-development-and-ongoing-maintenance/47455)** — Discuss new features, report issues, and engage with maintainers. **Contributions from anyone are welcome!**
 - **[Contributing Guidelines](./CONTRIBUTING.md)** - How to contribute to the project
 - **[Code of Conduct](./CODE_OF_CONDUCT.md)** - Community standards and expectations
 - **[Security Policy](./SECURITY.md)** - How to report security vulnerabilities
