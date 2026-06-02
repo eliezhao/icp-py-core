@@ -30,6 +30,11 @@ from icp_agent.agent import Agent
 from icp_agent.client import Client
 from icp_identity.identity import Identity
 
+# cbor2 exposes the immutable tagged-map class as ``FrozenDict`` (5.7–5.x)
+# and renamed it to ``frozendict`` in the 6.x Rust core. Resolve whichever
+# this install provides so these tests exercise the real decode type.
+FrozenDict = getattr(cbor2, "FrozenDict", None) or getattr(cbor2, "frozendict")
+
 # Ed25519 test vector (RFC 8032); used only for tests, not a real secret.
 TEST_PRIVKEY_HEX = "833fe62409237b9d62ec77587520911e9a759cec1d19755b7da901b96dca3d42"
 CANISTER_ID = "wcrzb-2qaaa-aaaap-qhpgq-cai"
@@ -50,13 +55,13 @@ class TestFrozenDictContract:
     """Confirm cbor2.FrozenDict is a Mapping but not a dict."""
 
     def test_frozendict_is_mapping_not_dict(self):
-        fd = cbor2.FrozenDict({"status": "replied"})
+        fd = FrozenDict({"status": "replied"})
         assert isinstance(fd, Mapping)
         # This is the exact mismatch that caused issue #14:
         assert not isinstance(fd, dict)
 
     def test_frozendict_supports_get_and_in(self):
-        fd = cbor2.FrozenDict({"status": "replied", "certificate": b"x"})
+        fd = FrozenDict({"status": "replied", "certificate": b"x"})
         assert fd["status"] == "replied"
         assert fd.get("status") == "replied"
         assert "status" in fd
@@ -83,7 +88,7 @@ class TestUpdateRawAcceptsFrozenDict:
     def test_replied_status_with_frozendict(self, agent):
         """status=replied wrapped in FrozenDict must not raise Malformed."""
         # Build the response body as a FrozenDict (what cbor2 6.x produces)
-        response_obj = cbor2.FrozenDict({
+        response_obj = FrozenDict({
             "status": "replied",
             "certificate": b"<cert-bytes>",
         })
@@ -111,7 +116,7 @@ class TestUpdateRawAcceptsFrozenDict:
         """status=non_replicated_rejection wrapped in FrozenDict must surface as ReplicaReject."""
         from icp_core.errors import ReplicaReject
 
-        response_obj = cbor2.FrozenDict({
+        response_obj = FrozenDict({
             "status": "non_replicated_rejection",
             "reject_code": 3,
             "reject_message": "method not found",
@@ -133,7 +138,7 @@ class TestUpdateRawAcceptsFrozenDict:
 
     def test_accepted_status_with_frozendict_polls(self, agent):
         """status=accepted wrapped in FrozenDict must trigger polling."""
-        response_obj = cbor2.FrozenDict({"status": "accepted"})
+        response_obj = FrozenDict({"status": "accepted"})
         mock_http_resp = self._make_response(202, response_obj)
 
         with patch.object(agent, "call_endpoint", return_value=mock_http_resp), \
@@ -162,9 +167,9 @@ class TestQueryRawAcceptsFrozenDict:
     def test_query_raw_replied_with_frozendict(self, agent):
         # Inner reply is itself a FrozenDict (nested tagged map under 6.x)
         reply_arg = b"DIDL\x00\x00"
-        result_obj = cbor2.FrozenDict({
+        result_obj = FrozenDict({
             "status": "replied",
-            "reply": cbor2.FrozenDict({"arg": reply_arg}),
+            "reply": FrozenDict({"arg": reply_arg}),
         })
 
         with patch.object(agent, "query_endpoint", return_value=result_obj):
@@ -179,7 +184,7 @@ class TestQueryRawAcceptsFrozenDict:
     def test_query_raw_rejected_with_frozendict(self, agent):
         from icp_core.errors import ReplicaReject
 
-        result_obj = cbor2.FrozenDict({
+        result_obj = FrozenDict({
             "status": "rejected",
             "reject_code": 5,
             "reject_message": "canister trapped",
@@ -201,9 +206,9 @@ class TestQueryRawAcceptsFrozenDict:
         import asyncio
 
         reply_arg = b"DIDL\x00\x00"
-        result_obj = cbor2.FrozenDict({
+        result_obj = FrozenDict({
             "status": "replied",
-            "reply": cbor2.FrozenDict({"arg": reply_arg}),
+            "reply": FrozenDict({"arg": reply_arg}),
         })
 
         async def _fake_query_async(*args, **kwargs):

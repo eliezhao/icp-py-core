@@ -340,8 +340,8 @@ def verify_ed25519_signature(signature: bytes, message: bytes, public_key: bytes
 def extract_ed25519_pubkey_from_der(der_key: bytes) -> bytes:
     """
     Extract Ed25519 public key from DER-encoded node public key.
-    
-    Node public keys are DER-encoded BLS keys (44 bytes):
+
+    Node public keys are DER-encoded Ed25519 keys (44 bytes, RFC 8410):
     - 12-byte DER prefix: [48, 42, 48, 5, 6, 3, 43, 101, 112, 3, 33, 0]
     - 32-byte Ed25519 public key
     
@@ -559,14 +559,19 @@ class Agent:
             raise ValueError(f"Invalid subnet_id format: {subnet_id.hex()}") from e
         
         path = [b"subnet", subnet_id, b"node", node_id, b"public_key"]
-        # Skip BLS verification when fetching node keys for query signature verification
-        # The node key itself will be verified during signature verification
-        certificate = self.read_state_subnet_raw(subnet_id_str, [path], verify_certificate=False)
+        # The node key is the trust anchor for query-signature verification, so it
+        # MUST come from a BLS-verified subnet certificate. Reading it without
+        # verification would let a malicious boundary node supply a forged node
+        # key (and a matching forged signature), defeating the whole purpose of
+        # query-signature verification. verify_certificate=True is fail-closed:
+        # it raises (e.g. BlstUnavailable / SignatureVerificationFailed) rather
+        # than trusting unverified data.
+        certificate = self.read_state_subnet_raw(subnet_id_str, [path], verify_certificate=True)
         public_key = certificate.lookup(path)
-        
+
         if public_key is None:
             raise NodeKeyNotFoundError(node_id, subnet_id)
-        
+
         # Cache the key
         self.node_key_cache.set(subnet_id, node_id, public_key)
         return public_key
@@ -587,14 +592,14 @@ class Agent:
             raise ValueError(f"Invalid subnet_id format: {subnet_id.hex()}") from e
         
         path = [b"subnet", subnet_id, b"node", node_id, b"public_key"]
-        # Skip BLS verification when fetching node keys for query signature verification
-        # The node key itself will be verified during signature verification
-        certificate = await self.read_state_subnet_raw_async(subnet_id_str, [path], verify_certificate=False)
+        # The node key is the trust anchor for query-signature verification, so it
+        # MUST come from a BLS-verified subnet certificate (see the sync variant).
+        certificate = await self.read_state_subnet_raw_async(subnet_id_str, [path], verify_certificate=True)
         public_key = certificate.lookup(path)
-        
+
         if public_key is None:
             raise NodeKeyNotFoundError(node_id, subnet_id)
-        
+
         # Cache the key
         self.node_key_cache.set(subnet_id, node_id, public_key)
         return public_key
@@ -606,22 +611,25 @@ class Agent:
         Returns:
             Tuple of (subnet_id, empty_dict). Node keys are fetched on-demand during signature verification.
         """
-        # Read canister state to get certificate with delegation
+        # Read canister state to get certificate with delegation.
+        # verify_certificate=True so the subnet_id comes from a BLS-verified
+        # delegation: otherwise an attacker could point us at a subnet whose
+        # node keys they control and have us "verify" their forged signature.
         paths = [[b"time"]]  # Minimal path to get certificate
-        cert = self.read_state_raw(canister_id, paths, verify_certificate=False)
-        
+        cert = self.read_state_raw(canister_id, paths, verify_certificate=True)
+
         # Determine subnet_id from delegation
         subnet_id = None
         if cert.delegation is not None:
             subnet_id_raw = cert.delegation.get("subnet_id") or cert.delegation.get(b"subnet_id")
             if subnet_id_raw is not None:
                 subnet_id = bytes(subnet_id_raw)
-        
+
         if subnet_id is None:
             # If no delegation, this might be NNS canister (root subnet)
             # For root subnet, subnet_id is derived from root key
             subnet_id = Principal.self_authenticating(self.root_key).bytes
-        
+
         # Return subnet_id and empty dict (node keys fetched on-demand)
         return subnet_id, {}
 
@@ -632,10 +640,12 @@ class Agent:
         Returns:
             Tuple of (subnet_id, empty_dict). Node keys are fetched on-demand during signature verification.
         """
-        # Read canister state to get certificate with delegation
+        # Read canister state to get certificate with delegation.
+        # verify_certificate=True so the subnet_id comes from a BLS-verified
+        # delegation (see the sync variant for the rationale).
         paths = [[b"time"]]  # Minimal path to get certificate
-        cert = await self.read_state_raw_async(canister_id, paths, verify_certificate=False)
-        
+        cert = await self.read_state_raw_async(canister_id, paths, verify_certificate=True)
+
         # Determine subnet_id from delegation
         subnet_id = None
         if cert.delegation is not None:
