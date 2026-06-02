@@ -8,13 +8,14 @@ import cbor2
 
 from icp_agent import Agent
 from icp_principal import Principal
-from icp_candid.candid import LEB128
 
 
 def time(agent: Agent, canister_id: str) -> int:
     certificate = agent.read_state_raw(canister_id, [["time".encode()]])
-    timestamp = certificate.lookup_time()
-    return LEB128.decode_u_bytes(bytes(timestamp))
+    # lookup_time() already decodes the ULEB128 'time' leaf into an int.
+    # Decoding it again (via bytes(int)) would allocate a multi-exabyte buffer
+    # and raise MemoryError, so just return the decoded value directly.
+    return certificate.lookup_time()
 
 def subnet_public_key(agent: Agent, canister_id: str, subnet_id: str) -> str:
     path = ["subnet".encode(), Principal.from_str(subnet_id).bytes, "public_key".encode()]

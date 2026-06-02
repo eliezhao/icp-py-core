@@ -51,7 +51,9 @@ def _get_ranges_from_parent(cert_dict):
     assert canister_range is not None, "canister_range data must exist"
     
     ranges_raw = cbor2.loads(canister_range)
-    assert isinstance(ranges_raw, list) and len(ranges_raw) >= 1
+    # cbor2 6.x decodes the self-describe-tagged ranges as immutable tuples,
+    # cbor2 5.x as lists; production code (check_delegation) tolerates both.
+    assert isinstance(ranges_raw, (list, tuple)) and len(ranges_raw) >= 1
     lo, hi = ranges_raw[0]
     return bytes(lo), bytes(hi)
 

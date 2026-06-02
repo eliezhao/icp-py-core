@@ -267,10 +267,14 @@ class Identity:
         return self._der_pubkey
 
     def __repr__(self) -> str:
-        return f"Identity({self.key_type}, {self._privkey}, {self._pubkey})"
+        # Never include the private key: repr() routinely ends up in logs,
+        # tracebacks, and debuggers, and leaking key material there is a
+        # serious vulnerability. Only the (public) key type and public key
+        # are shown.
+        return f"Identity(type={self.key_type}, pubkey={self._pubkey}, privkey=<redacted>)"
 
     def __str__(self) -> str:
-        return f"({self.key_type}, {self._privkey}, {self._pubkey})"
+        return f"Identity(type={self.key_type}, pubkey={self._pubkey})"
 
 
 # =========================
@@ -347,7 +351,9 @@ class DelegateIdentity:
         return DelegateIdentity(inner, parsed_ic_delegation)
 
     def __repr__(self) -> str:
-        return f"DelegateIdentity(identity={self.identity!r}, delegations={self._delegations!r})"
+        # self.identity!r is now redacted (see Identity.__repr__); show only the
+        # delegation count rather than dumping the full chain.
+        return f"DelegateIdentity(identity={self.identity!r}, delegations={len(self._delegations)})"
 
     def __str__(self) -> str:
-        return f"(DelegateIdentity identity={self.identity}, delegations={self._delegations})"
+        return f"DelegateIdentity(pubkey={self._der_pubkey.hex()}, delegations={len(self._delegations)})"

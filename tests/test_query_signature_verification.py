@@ -19,7 +19,9 @@ from icp_core.errors import (
     TooManySignatures,
     QuerySignatureVerificationFailed,
     SecurityError,
+    TransportError,
 )
+from icp_certificate.certificate import BlstUnavailable
 from icp_identity.identity import Identity
 
 TEST_PRIVKEY_HEX = "833fe62409237b9d62ec77587520911e9a759cec1d19755b7da901b96dca3d42"
@@ -105,12 +107,16 @@ class TestVerifyQueryResponseSignaturesNoArbitraryCap:
             "signatures": [sig] * 101,
         }
         request_id = b"\x00\x01\x02\x03"
+        # Subnet discovery now reads a BLS-verified certificate; stub it out so
+        # this stays an offline unit test that exercises the signature-walking
+        # logic rather than the network/crypto path.
         # The signatures are all garbage, so we still expect a verification
         # failure — but it must be QuerySignatureVerificationFailed (because
         # we walked the whole list), NOT TooManySignatures (which would mean
         # the cap fired before any verification was attempted).
-        with pytest.raises(QuerySignatureVerificationFailed):
-            agent._verify_query_response_signatures(result, request_id, CANISTER_ID)
+        with patch.object(agent, "_get_subnet_by_canister", return_value=(b"\x00" * 29, {})):
+            with pytest.raises(QuerySignatureVerificationFailed):
+                agent._verify_query_response_signatures(result, request_id, CANISTER_ID)
 
 
 class TestQueryRawWithVerifyQuerySignatures:
@@ -191,6 +197,13 @@ class TestRealQueryResponseSignatureVerification:
         assert "signatures" in result and len(result["signatures"]) > 0
         try:
             agent._verify_query_response_signatures(result, request_id, canister_id)
+        except BlstUnavailable:
+            pytest.skip(
+                "Query-signature verification now reads BLS-verified subnet "
+                "certificates; the official 'blst' binding is not installed."
+            )
+        except TransportError as e:
+            pytest.skip("Network unavailable for live subnet/node-key lookup: %s" % e)
         except QuerySignatureVerificationFailed as e:
             pytest.skip(
                 "Real signature verification failed (fixture may be stale or node key lookup failed): %s" % e
